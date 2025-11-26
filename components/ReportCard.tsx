@@ -54,7 +54,8 @@ import {
   Maximize2,
   Minimize2,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  BookOpen
 } from 'lucide-react';
 import {
   BarChart as ReBarChart,
@@ -469,158 +470,161 @@ const ChatWidget = ({
   if (typeof document === 'undefined') return null;
 
   return createPortal(
-    <div className="fixed bottom-0 right-0 z-[9999] p-4 md:p-6 pointer-events-none flex flex-col items-end gap-4 print:hidden w-full h-full overflow-hidden justify-end">
+    <div className="fixed inset-0 z-[9999] pointer-events-none print:hidden overflow-hidden">
       
-      {/* CHAT WINDOW */}
-      <div 
-        className={`
-          pointer-events-auto
-          w-[90vw] md:w-[400px] 
-          bg-slate-900/95 backdrop-blur-xl 
-          border border-indigo-500/30 
-          rounded-2xl shadow-2xl 
-          overflow-hidden flex flex-col
-          transition-all duration-300 origin-bottom-right
-          ${isOpen ? 'h-[600px] max-h-[80vh] opacity-100 scale-100 translate-y-0' : 'h-0 opacity-0 scale-90 translate-y-10'}
-        `}
-      >
-        {/* Header */}
-        <div className="px-4 py-3 bg-gradient-to-r from-indigo-900 via-indigo-900 to-purple-900 border-b border-white/10 flex justify-between items-center shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="bg-white/10 p-1.5 rounded-lg border border-white/10">
-              <Sparkles className="w-4 h-4 text-indigo-300" />
+      <div className="w-full h-full relative p-4 md:p-6 flex flex-col items-end justify-end">
+        {/* CHAT WINDOW */}
+        <div 
+          className={`
+            pointer-events-auto
+            w-[90vw] md:w-[400px] 
+            bg-slate-900/95 backdrop-blur-xl 
+            border border-indigo-500/30 
+            rounded-2xl shadow-2xl 
+            overflow-hidden flex flex-col
+            transition-all duration-300 origin-bottom-right
+            mb-20 md:mb-24
+            ${isOpen ? 'h-[600px] max-h-[80vh] opacity-100 scale-100 translate-y-0' : 'h-0 opacity-0 scale-90 translate-y-10'}
+          `}
+        >
+          {/* Header */}
+          <div className="px-4 py-3 bg-gradient-to-r from-indigo-900 via-indigo-900 to-purple-900 border-b border-white/10 flex justify-between items-center shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="bg-white/10 p-1.5 rounded-lg border border-white/10">
+                <Sparkles className="w-4 h-4 text-indigo-300" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white leading-tight">Ultramagnus AI</h3>
+                <p className="text-[10px] text-indigo-200">Genius Mode • {report.ticker}</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-sm font-bold text-white leading-tight">Ultramagnus AI</h3>
-              <p className="text-[10px] text-indigo-200">Genius Mode • {report.ticker}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <button 
-              onClick={resetChat}
-              className="p-1.5 hover:bg-white/10 rounded-lg text-slate-300 transition-colors"
-              title="Clear Chat"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
-            <button 
-              onClick={onToggle}
-              className="p-1.5 hover:bg-white/10 rounded-lg text-slate-300 transition-colors"
-              title="Minimize"
-            >
-              <Minimize2 className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Messages Body */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-slate-950/50">
-          {messages.map((msg) => (
-            <div 
-              key={msg.id} 
-              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}
-            >
-              <div 
-                className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
-                  msg.role === 'user' 
-                    ? 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-br-none shadow-indigo-500/20' 
-                    : 'bg-slate-800 text-slate-300 rounded-bl-none border border-white/5'
-                }`}
+            <div className="flex items-center gap-1">
+              <button 
+                onClick={resetChat}
+                className="p-1.5 hover:bg-white/10 rounded-lg text-slate-300 transition-colors"
+                title="Clear Chat"
               >
-                {msg.role === 'model' && (
-                  <div className="flex items-center gap-1.5 mb-1.5 opacity-50 text-[10px] font-bold uppercase tracking-wider">
-                    <Bot className="w-3 h-3" /> Assistant
-                  </div>
-                )}
-                <div className="whitespace-pre-wrap font-sans">{renderFormattedText(msg.text)}</div>
-              </div>
+                <RefreshCw className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={onToggle}
+                className="p-1.5 hover:bg-white/10 rounded-lg text-slate-300 transition-colors"
+                title="Minimize"
+              >
+                <Minimize2 className="w-4 h-4" />
+              </button>
             </div>
-          ))}
-          
-          {isTyping && (
-            <div className="flex justify-start animate-fade-in">
-              <div className="bg-slate-800 p-3 rounded-2xl rounded-bl-none border border-white/5 flex gap-1 items-center h-10">
-                <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+          </div>
+
+          {/* Messages Body */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-slate-950/50">
+            {messages.map((msg) => (
+              <div 
+                key={msg.id} 
+                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}
+              >
+                <div 
+                  className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                    msg.role === 'user' 
+                      ? 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-br-none shadow-indigo-500/20' 
+                      : 'bg-slate-800 text-slate-300 rounded-bl-none border border-white/5'
+                  }`}
+                >
+                  {msg.role === 'model' && (
+                    <div className="flex items-center gap-1.5 mb-1.5 opacity-50 text-[10px] font-bold uppercase tracking-wider">
+                      <Bot className="w-3 h-3" /> Assistant
+                    </div>
+                  )}
+                  <div className="whitespace-pre-wrap font-sans">{renderFormattedText(msg.text)}</div>
+                </div>
               </div>
+            ))}
+            
+            {isTyping && (
+              <div className="flex justify-start animate-fade-in">
+                <div className="bg-slate-800 p-3 rounded-2xl rounded-bl-none border border-white/5 flex gap-1 items-center h-10">
+                  <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                  <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                  <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Quick Prompts Area */}
+          {messages.length < 4 && !isTyping && (
+            <div className="px-4 py-2 bg-slate-900 border-t border-white/5 overflow-x-auto no-scrollbar flex gap-2 shrink-0">
+               {QUICK_PROMPTS.map((prompt) => (
+                 <button
+                   key={prompt}
+                   onClick={() => handleSend(prompt)}
+                   className="whitespace-nowrap px-3 py-1.5 rounded-full bg-slate-800 border border-white/10 text-xs text-indigo-300 hover:bg-indigo-500/10 hover:border-indigo-500/50 hover:text-white transition-all"
+                 >
+                   {prompt}
+                 </button>
+               ))}
             </div>
           )}
-          <div ref={messagesEndRef} />
+
+          {/* Input Footer */}
+          <div className="p-4 bg-slate-900 border-t border-white/10 shrink-0">
+            <div className="relative flex items-center bg-slate-800 rounded-xl border border-white/10 focus-within:border-indigo-500/50 focus-within:ring-1 focus-within:ring-indigo-500/20 transition-all">
+              <input
+                ref={inputRef}
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask about risks, targets, or news..."
+                className="w-full bg-transparent px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none"
+                disabled={isTyping}
+              />
+              <button 
+                onClick={() => handleSend()}
+                disabled={!inputValue.trim() || isTyping}
+                className="p-2 mr-1 text-indigo-400 hover:text-white disabled:opacity-50 transition-colors rounded-lg hover:bg-indigo-600"
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="text-[10px] text-center text-slate-600 mt-2 flex items-center justify-center gap-1">
+              <Info className="w-3 h-3" /> AI can make mistakes. Verify critical data.
+            </div>
+          </div>
         </div>
 
-        {/* Quick Prompts Area */}
-        {messages.length < 4 && !isTyping && (
-          <div className="px-4 py-2 bg-slate-900 border-t border-white/5 overflow-x-auto no-scrollbar flex gap-2 shrink-0">
-             {QUICK_PROMPTS.map((prompt) => (
-               <button
-                 key={prompt}
-                 onClick={() => handleSend(prompt)}
-                 className="whitespace-nowrap px-3 py-1.5 rounded-full bg-slate-800 border border-white/10 text-xs text-indigo-300 hover:bg-indigo-500/10 hover:border-indigo-500/50 hover:text-white transition-all"
-               >
-                 {prompt}
-               </button>
-             ))}
+        {/* FLOATING ACTION BUTTON */}
+        <button 
+          onClick={onToggle}
+          className={`
+            absolute bottom-6 right-6
+            pointer-events-auto
+            group flex items-center justify-center 
+            w-14 h-14 md:w-16 md:h-16
+            bg-gradient-to-tr from-indigo-600 to-purple-600 
+            rounded-full shadow-lg shadow-indigo-500/30 
+            hover:shadow-indigo-500/50 hover:scale-105 
+            transition-all duration-300 z-50
+            border border-white/10
+          `}
+        >
+          <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-20 rounded-full transition-opacity"></div>
+          
+          {/* Icon Transition */}
+          <div className={`absolute transition-all duration-300 ${isOpen ? 'rotate-90 opacity-0' : 'rotate-0 opacity-100'}`}>
+             <Sparkles className="w-6 h-6 md:w-7 md:h-7 text-white animate-pulse-slow" />
           </div>
-        )}
+          <div className={`absolute transition-all duration-300 ${isOpen ? 'rotate-0 opacity-100' : '-rotate-90 opacity-0'}`}>
+             <ChevronDown className="w-8 h-8 text-white" />
+          </div>
 
-        {/* Input Footer */}
-        <div className="p-4 bg-slate-900 border-t border-white/10 shrink-0">
-          <div className="relative flex items-center bg-slate-800 rounded-xl border border-white/10 focus-within:border-indigo-500/50 focus-within:ring-1 focus-within:ring-indigo-500/20 transition-all">
-            <input
-              ref={inputRef}
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask about risks, targets, or news..."
-              className="w-full bg-transparent px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none"
-              disabled={isTyping}
-            />
-            <button 
-              onClick={() => handleSend()}
-              disabled={!inputValue.trim() || isTyping}
-              className="p-2 mr-1 text-indigo-400 hover:text-white disabled:opacity-50 transition-colors rounded-lg hover:bg-indigo-600"
-            >
-              <Send className="w-5 h-5" />
-            </button>
-          </div>
-          <div className="text-[10px] text-center text-slate-600 mt-2 flex items-center justify-center gap-1">
-            <Info className="w-3 h-3" /> AI can make mistakes. Verify critical data.
-          </div>
-        </div>
+          {/* Notification Dot (Only show if closed and not yet opened) */}
+          {!isOpen && messages.length === 1 && (
+             <div className="absolute top-0 right-0 w-4 h-4 bg-red-500 rounded-full border-2 border-slate-900 animate-bounce"></div>
+          )}
+        </button>
       </div>
-
-      {/* FLOATING ACTION BUTTON */}
-      <button 
-        onClick={onToggle}
-        className={`
-          pointer-events-auto
-          group relative flex items-center justify-center 
-          w-14 h-14 md:w-16 md:h-16
-          bg-gradient-to-tr from-indigo-600 to-purple-600 
-          rounded-full shadow-lg shadow-indigo-500/30 
-          hover:shadow-indigo-500/50 hover:scale-105 
-          transition-all duration-300 z-50
-          border border-white/10
-          mb-6 mr-6
-        `}
-      >
-        <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-20 rounded-full transition-opacity"></div>
-        
-        {/* Icon Transition */}
-        <div className={`absolute transition-all duration-300 ${isOpen ? 'rotate-90 opacity-0' : 'rotate-0 opacity-100'}`}>
-           <Sparkles className="w-6 h-6 md:w-7 md:h-7 text-white animate-pulse-slow" />
-        </div>
-        <div className={`absolute transition-all duration-300 ${isOpen ? 'rotate-0 opacity-100' : '-rotate-90 opacity-0'}`}>
-           <ChevronDown className="w-8 h-8 text-white" />
-        </div>
-
-        {/* Notification Dot (Only show if closed and not yet opened) */}
-        {!isOpen && messages.length === 1 && (
-           <div className="absolute top-0 right-0 w-4 h-4 bg-red-500 rounded-full border-2 border-slate-900 animate-bounce"></div>
-        )}
-      </button>
 
     </div>,
     document.body
@@ -633,7 +637,8 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isSaved, onToggleSave }
   const [feedback, setFeedback] = useState<'yes' | 'no' | null>(null);
   const [notes, setNotes] = useState('');
   const [thesis, setThesis] = useState('');
-  const [isThesisOpen, setIsThesisOpen] = useState(false);
+  const [isNotebookOpen, setIsNotebookOpen] = useState(false);
+  const [activeNotebookTab, setActiveNotebookTab] = useState<'thesis' | 'notes'>('thesis');
   const [isExporting, setIsExporting] = useState(false);
   const [isSourcesOpen, setIsSourcesOpen] = useState(false);
   const [showValuation, setShowValuation] = useState(false);
@@ -657,7 +662,18 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isSaved, onToggleSave }
 
     const storedThesis = localStorage.getItem(`ultramagnus_thesis_${report.ticker}`);
     setThesis(storedThesis || '');
-    if (storedThesis) setIsThesisOpen(true);
+    
+    // Auto-open if content exists, default to correct tab
+    if (storedThesis || storedNotes) {
+      setIsNotebookOpen(true);
+      if (!storedThesis && storedNotes) {
+        setActiveNotebookTab('notes');
+      } else {
+        setActiveNotebookTab('thesis');
+      }
+    } else {
+      setIsNotebookOpen(false);
+    }
 
   }, [report.ticker]);
 
@@ -954,14 +970,6 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isSaved, onToggleSave }
           </div>
           
           <div className="flex items-center gap-2 print:hidden" data-html2canvas-ignore>
-            {/* NEW: Ask AI Button in Header */}
-            <button
-              onClick={() => setIsChatOpen(true)}
-              className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded-lg border border-indigo-400/50 transition-colors flex items-center gap-2 shadow-lg shadow-indigo-500/20"
-            >
-              <Sparkles className="w-4 h-4" /> Ask AI
-            </button>
-
             <button 
               onClick={handleSaveToggle}
               className={`px-3 py-2 text-xs font-medium rounded-lg border transition-colors flex items-center gap-2 ${isSaved ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-white/10'}`}
@@ -1937,61 +1945,75 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isSaved, onToggleSave }
         </div>
       </div>
 
-      {/* 10. My Investment Thesis (New Collapsible Section) */}
+      {/* 10. Combined Analyst Notebook (Thesis + Notes) */}
       <div className="bg-surface rounded-2xl border border-white/5 shadow-lg overflow-hidden group print:hidden" data-html2canvas-ignore>
-         <button 
-           onClick={() => setIsThesisOpen(!isThesisOpen)}
-           className="w-full flex items-center justify-between p-6 bg-slate-800/30 hover:bg-slate-800/50 transition-colors"
-         >
+        <button 
+          onClick={() => setIsNotebookOpen(!isNotebookOpen)}
+          className="w-full flex items-center justify-between p-6 bg-slate-800/30 hover:bg-slate-800/50 transition-colors"
+        >
             <div className="flex items-center gap-3">
-               <div className="bg-yellow-500/10 p-2 rounded-lg border border-yellow-500/20">
-                  <Lightbulb className="w-5 h-5 text-yellow-400" />
-               </div>
-               <h3 className="font-display font-bold text-lg text-white">My Investment Thesis</h3>
-               <span className="ml-2 text-[10px] text-slate-500 font-mono uppercase tracking-wider bg-slate-900/50 px-2 py-1 rounded border border-white/5">
-                   Private Strategy
-               </span>
-            </div>
-            <ChevronDown className={`w-5 h-5 text-slate-500 transition-transform duration-300 ${isThesisOpen ? 'rotate-180' : ''}`} />
-         </button>
-         
-         <div className={`transition-all duration-300 ease-in-out ${isThesisOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
-            <div className="p-6 pt-0">
-               <textarea
-                  value={thesis}
-                  onChange={handleThesisChange}
-                  placeholder="Articulate your core thesis here. Why do you own this? What is your exit strategy? This will be used to inform the AI Assistant."
-                  className="w-full min-h-[150px] bg-slate-900/50 border border-white/10 rounded-xl p-4 text-sm text-slate-300 placeholder-slate-600 focus:outline-none focus:border-yellow-500/30 focus:bg-slate-900 transition-all resize-y font-mono custom-scrollbar"
-               />
-            </div>
-         </div>
-      </div>
-
-      {/* 11. Analyst Notes */}
-      <div className="bg-surface rounded-2xl p-6 border border-white/5 shadow-lg relative overflow-hidden group print:hidden" data-html2canvas-ignore>
-          <div className="absolute top-0 right-0 p-3 opacity-5 group-hover:opacity-10 transition-opacity">
-              <NotebookPen className="w-24 h-24" />
-          </div>
-          <div className="relative z-10">
-              <div className="flex items-center gap-3 mb-4 pb-4 border-b border-white/5">
-                  <div className="bg-indigo-600/20 p-2 rounded-lg border border-indigo-500/30">
-                      <NotebookPen className="w-5 h-5 text-indigo-400" />
-                  </div>
-                  <h3 className="font-display font-bold text-lg text-white">My Analyst Notes</h3>
-                  <span className="ml-auto text-[10px] text-slate-500 font-mono uppercase tracking-wider bg-slate-900/50 px-2 py-1 rounded border border-white/5">
-                      Auto-saved
-                  </span>
+              <div className="bg-indigo-500/10 p-2 rounded-lg border border-indigo-500/20">
+                  <NotebookPen className="w-5 h-5 text-indigo-400" />
               </div>
-              <textarea
-                  value={notes}
-                  onChange={handleNotesChange}
-                  placeholder="Record your personal key levels to watch, risks, or reminders..."
-                  className="w-full min-h-[120px] bg-slate-900/50 border border-white/10 rounded-xl p-4 text-sm text-slate-300 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:bg-slate-900 transition-all resize-y font-mono custom-scrollbar"
-              />
-          </div>
+              <h3 className="font-display font-bold text-lg text-white">Analyst Notebook</h3>
+              <span className="ml-2 text-[10px] text-slate-500 font-mono uppercase tracking-wider bg-slate-900/50 px-2 py-1 rounded border border-white/5">
+                  Private & Auto-saved
+              </span>
+            </div>
+            <ChevronDown className={`w-5 h-5 text-slate-500 transition-transform duration-300 ${isNotebookOpen ? 'rotate-180' : ''}`} />
+        </button>
+        
+        <div className={`transition-all duration-300 ease-in-out ${isNotebookOpen ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'}`}>
+            <div className="p-6 pt-0">
+               {/* Tabs */}
+               <div className="flex items-center gap-4 mb-4 border-b border-white/5">
+                  <button
+                    onClick={() => setActiveNotebookTab('thesis')}
+                    className={`pb-2 text-sm font-bold transition-all border-b-2 ${activeNotebookTab === 'thesis' ? 'text-white border-indigo-500' : 'text-slate-500 border-transparent hover:text-slate-300'}`}
+                  >
+                    Investment Thesis
+                  </button>
+                  <button
+                    onClick={() => setActiveNotebookTab('notes')}
+                    className={`pb-2 text-sm font-bold transition-all border-b-2 ${activeNotebookTab === 'notes' ? 'text-white border-indigo-500' : 'text-slate-500 border-transparent hover:text-slate-300'}`}
+                  >
+                    Scratchpad & Notes
+                  </button>
+               </div>
+
+               {/* Content */}
+               {activeNotebookTab === 'thesis' ? (
+                 <div className="animate-fade-in">
+                    <div className="flex items-center gap-2 mb-2 text-xs text-yellow-400/80">
+                       <Lightbulb className="w-3 h-3" />
+                       <span>Why do you own this? What is your exit strategy? (Used by AI Assistant)</span>
+                    </div>
+                    <textarea
+                       value={thesis}
+                       onChange={handleThesisChange}
+                       placeholder="Draft your core thesis here..."
+                       className="w-full min-h-[200px] bg-slate-900/50 border border-white/10 rounded-xl p-4 text-sm text-slate-300 placeholder-slate-600 focus:outline-none focus:border-yellow-500/30 focus:bg-slate-900 transition-all resize-y font-mono custom-scrollbar"
+                    />
+                 </div>
+               ) : (
+                 <div className="animate-fade-in">
+                    <div className="flex items-center gap-2 mb-2 text-xs text-indigo-400/80">
+                       <NotebookPen className="w-3 h-3" />
+                       <span>Key levels, risks, or reminders.</span>
+                    </div>
+                    <textarea
+                       value={notes}
+                       onChange={handleNotesChange}
+                       placeholder="Record quick notes here..."
+                       className="w-full min-h-[200px] bg-slate-900/50 border border-white/10 rounded-xl p-4 text-sm text-slate-300 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:bg-slate-900 transition-all resize-y font-mono custom-scrollbar"
+                    />
+                 </div>
+               )}
+            </div>
+        </div>
       </div>
 
-      {/* 12. Sources Section (REFACTORED: Collapsible Accordion) */}
+      {/* 11. Sources Section (REFACTORED: Collapsible Accordion) */}
       {report.sources && report.sources.length > 0 && (
         <div className="pt-6 mt-4">
            <button 
@@ -2031,7 +2053,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isSaved, onToggleSave }
         </div>
       )}
 
-      {/* 13. Feedback Mechanism */}
+      {/* 12. Feedback Mechanism */}
       <div className="fixed bottom-6 left-6 z-40 animate-fade-in-up print:hidden" data-html2canvas-ignore>
          <div className="bg-slate-800/90 backdrop-blur-md border border-white/10 rounded-full shadow-2xl p-2 pl-4 flex items-center gap-3">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-2">Was this helpful?</span>
@@ -2058,7 +2080,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isSaved, onToggleSave }
          </div>
       </div>
       
-      {/* 14. Floating AI Chat Trigger - MOVED TO PORTAL WIDGET BELOW */}
+      {/* 13. Floating AI Chat Trigger - MOVED TO PORTAL WIDGET BELOW */}
       <ChatWidget 
          report={report}
          userNotes={notes}

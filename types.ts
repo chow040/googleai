@@ -197,3 +197,16 @@ export enum LoadingState {
   SUCCESS = 'SUCCESS',
   ERROR = 'ERROR'
 }
+
+// Background Analysis Types
+export type AnalysisStatus = 'PROCESSING' | 'READY' | 'ERROR';
+
+export interface AnalysisSession {
+  id: string; // Unique ID for concurrent sessions
+  ticker: string;
+  progress: number; // 0 - 100
+  status: AnalysisStatus;
+  phase: string;
+  error?: string;
+  result?: EquityReport;
+}

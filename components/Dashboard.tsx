@@ -1,6 +1,5 @@
-
-import React, { useRef, useState, useEffect } from 'react';
-import { SavedReportItem, UserProfile } from '../types';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
+import { SavedReportItem, UserProfile, AnalysisSession, EquityReport } from '../types';
 import { 
   Search, 
   TrendingUp, 
@@ -14,7 +13,13 @@ import {
   Clock,
   ArrowRight,
   Crown,
-  Folder
+  Folder,
+  Satellite,
+  CheckCircle,
+  AlertOctagon,
+  Play,
+  Trash2,
+  Minus
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -25,13 +30,187 @@ interface DashboardProps {
   onRemoveReport: (ticker: string, e: React.MouseEvent) => void;
   tickerInput: string;
   onTickerChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  isAnalyzing: boolean;
   suggestions: {symbol: string, name: string}[];
   showSuggestions: boolean;
   onSelectSuggestion: (symbol: string) => void;
   setShowSuggestions: (show: boolean) => void;
   onViewSample: () => void;
+  analysisSessions: AnalysisSession[];
+  onViewAnalyzedReport: (id: string) => void;
+  onCancelAnalysis: (id: string) => void;
 }
+
+// Unified Card Component for Grid
+const LibraryCard = ({
+  session,
+  savedItem,
+  onClick,
+  onAction
+}: {
+  session?: AnalysisSession;
+  savedItem?: SavedReportItem;
+  onClick: () => void;
+  onAction: (e: React.MouseEvent) => void;
+}) => {
+  const isSession = !!session;
+  const status = session ? session.status : 'SAVED';
+
+  // --- PROCESSING STATE ---
+  if (status === 'PROCESSING' && session) {
+    return (
+      <div className="bg-slate-900 rounded-xl p-3 border border-indigo-500/30 shadow-[0_0_20px_rgba(99,102,241,0.05)] relative overflow-hidden h-full min-h-[105px] flex flex-col justify-between animate-fade-in-up group">
+        {/* Background Animation */}
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10"></div>
+        
+        <div className="relative z-10 flex justify-between items-start">
+          <div>
+             <div className="flex items-center gap-1.5 mb-0.5">
+                <span className="text-sm font-mono font-bold text-white truncate max-w-[80px]">{session.ticker}</span>
+                <Loader2 className="w-3 h-3 text-indigo-400 animate-spin" />
+             </div>
+             <div className="text-[9px] text-indigo-300 font-medium animate-pulse uppercase tracking-wider">
+                Analyzing...
+             </div>
+          </div>
+          <button 
+             onClick={onAction}
+             className="text-slate-600 hover:text-white p-1 rounded-full hover:bg-white/5 transition-colors"
+             title="Cancel Analysis"
+          >
+             <X className="w-3 h-3" />
+          </button>
+        </div>
+
+        <div className="relative z-10 space-y-1.5">
+           <div className="flex justify-between items-end text-[9px]">
+              <span className="text-slate-400 truncate max-w-[70%]">{session.phase}</span>
+              <span className="text-white font-mono">{Math.round(session.progress)}%</span>
+           </div>
+           {/* Progress Bar */}
+           <div className="h-0.5 w-full bg-slate-800 rounded-full overflow-hidden border border-white/5">
+              <div 
+                 className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-300 relative"
+                 style={{ width: `${session.progress}%` }}
+              >
+                  <div className="absolute inset-0 bg-white/20 w-full animate-[shimmer_1s_infinite]"></div>
+              </div>
+           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- ERROR STATE ---
+  if (status === 'ERROR' && session) {
+     return (
+        <div className="bg-slate-900 rounded-xl p-3 border border-red-500/30 relative overflow-hidden h-full min-h-[105px] flex flex-col justify-between animate-fade-in-up">
+           <div className="flex justify-between items-start">
+              <div className="flex items-center gap-1.5">
+                 <span className="text-sm font-mono font-bold text-white">{session.ticker}</span>
+                 <AlertOctagon className="w-3 h-3 text-red-400" />
+              </div>
+              <button onClick={onAction}><X className="w-3 h-3 text-red-400 hover:text-white" /></button>
+           </div>
+           <div>
+              <div className="text-[9px] text-red-300 mb-0.5 font-bold uppercase">Failed</div>
+              <p className="text-[9px] text-slate-400 leading-tight line-clamp-2">{session.error || 'Connection interrupted.'}</p>
+           </div>
+        </div>
+     );
+  }
+
+  // --- READY / SAVED STATE ---
+  let displayData;
+  if (isSession && session?.result) {
+     displayData = {
+        ticker: session.result.ticker,
+        name: session.result.companyName,
+        price: session.result.currentPrice,
+        change: session.result.priceChange,
+        verdict: session.result.verdict,
+        isSaved: false,
+        isNew: true
+     };
+  } else if (savedItem) {
+     displayData = {
+        ticker: savedItem.ticker,
+        name: savedItem.companyName,
+        price: savedItem.currentPrice,
+        change: savedItem.priceChange,
+        verdict: savedItem.verdict,
+        isSaved: true,
+        isNew: false
+     };
+  } else {
+     return null;
+  }
+
+  const isPriceUp = displayData.change.startsWith('+');
+
+  return (
+    <div 
+      onClick={onClick}
+      className={`
+        bg-slate-900 rounded-xl p-3 border 
+        ${displayData.isNew 
+           ? 'border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.15)]' 
+           : 'border-white/5 hover:border-indigo-500/50 hover:bg-slate-900/80 shadow-md'
+        }
+        transition-all cursor-pointer group relative h-full min-h-[105px] flex flex-col justify-between animate-fade-in-up
+      `}
+    >
+       {displayData.isNew && (
+          <div className="absolute top-0 right-0">
+             <span className="bg-emerald-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-bl-lg uppercase tracking-wider">
+                Ready
+             </span>
+          </div>
+       )}
+
+       <div className="flex justify-between items-start mb-1">
+          <div className="min-w-0 pr-2">
+             <div className="flex items-center gap-1.5">
+                <div className="font-mono font-bold text-base text-white group-hover:text-indigo-400 transition-colors truncate">
+                   {displayData.ticker}
+                </div>
+                {displayData.isSaved && (
+                  <span className="bg-white/5 p-0.5 rounded shrink-0">
+                     <Database className="w-2.5 h-2.5 text-slate-500 group-hover:text-emerald-400 transition-colors" />
+                  </span>
+                )}
+             </div>
+             <div className="text-[9px] text-slate-400 truncate mt-0.5">{displayData.name}</div>
+          </div>
+          <button 
+            onClick={(e) => { e.stopPropagation(); onAction(e); }}
+            className="text-slate-600 hover:text-red-400 p-1 rounded-full hover:bg-white/5 transition-colors z-10 shrink-0"
+          >
+             <X className="w-3 h-3" />
+          </button>
+       </div>
+       
+       <div className="h-px bg-white/5 w-full my-2"></div>
+
+       <div className="flex justify-between items-end">
+          <div>
+             <div className="text-base font-mono font-bold text-white">{displayData.price}</div>
+             <div className={`text-[9px] font-bold flex items-center gap-0.5 mt-0.5 ${isPriceUp ? 'text-green-400' : 'text-red-400'}`}>
+                {isPriceUp ? <TrendingUp className="w-2.5 h-2.5"/> : <TrendingDown className="w-2.5 h-2.5"/>}
+                {displayData.change}
+             </div>
+          </div>
+          <div className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider border ${
+             displayData.verdict === 'BUY' ? 'border-green-500/30 bg-green-500/10 text-green-400' : 
+             displayData.verdict === 'SELL' ? 'border-red-500/30 bg-red-500/10 text-red-400' : 
+             'border-amber-500/30 bg-amber-500/10 text-amber-400'
+          }`}>
+             {displayData.verdict}
+          </div>
+       </div>
+    </div>
+  );
+};
+
 
 const Dashboard: React.FC<DashboardProps> = ({
   user,
@@ -41,16 +220,18 @@ const Dashboard: React.FC<DashboardProps> = ({
   onRemoveReport,
   tickerInput,
   onTickerChange,
-  isAnalyzing,
   suggestions,
   showSuggestions,
   onSelectSuggestion,
   setShowSuggestions,
-  onViewSample
+  onViewSample,
+  analysisSessions,
+  onViewAnalyzedReport,
+  onCancelAnalysis
 }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const marketStatus = useMemo(() => Math.random() > 0.5 ? 'volatile' : 'trending up', []);
 
-  // Handle clicking outside of dropdown
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -62,6 +243,9 @@ const Dashboard: React.FC<DashboardProps> = ({
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  // Combine counts for stats
+  const totalItems = savedReports.length + analysisSessions.length;
 
   return (
     <div className="animate-fade-in w-full pb-20">
@@ -80,11 +264,10 @@ const Dashboard: React.FC<DashboardProps> = ({
               Welcome back, <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">{user.name}</span>
             </h2>
             <p className="text-slate-400 mt-2 max-w-xl">
-              Markets are {Math.random() > 0.5 ? 'volatile' : 'trending up'} today. You have {savedReports.length} saved reports in your library.
+              Markets are {marketStatus} today. You have {savedReports.length} saved reports in your library.
             </p>
           </div>
           
-          {/* Mock Market Pulse */}
           <div className="flex gap-2">
              <div className="bg-slate-800/50 p-2 px-3 rounded-lg border border-white/5 flex flex-col items-end">
                 <span className="text-[10px] text-slate-500 font-bold uppercase">S&P 500</span>
@@ -115,21 +298,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                     onFocus={() => { if(tickerInput) setShowSuggestions(true); }}
                     placeholder="Analyze a new ticker (e.g. NVDA, PLTR)..."
                     className="w-full bg-transparent px-4 py-6 text-lg text-white placeholder-slate-500 focus:outline-none font-mono uppercase rounded-xl"
-                    disabled={isAnalyzing}
                     autoComplete="off"
                   />
                   <button
                     type="submit"
-                    disabled={isAnalyzing || !tickerInput}
+                    disabled={!tickerInput}
                     className="mr-2 bg-white text-slate-900 px-6 py-3 font-bold hover:bg-indigo-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed rounded-lg flex items-center gap-2"
                   >
-                    {isAnalyzing ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : (
-                      <>
-                        ANALYZE <ArrowRight className="w-4 h-4" />
-                      </>
-                    )}
+                     ANALYZE <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
 
@@ -156,9 +332,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               </div>
           </form>
           
-          {/* Quick Links / Demo */}
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-             {/* Demo Report Link */}
              <div className="bg-slate-800/30 border border-white/5 rounded-lg p-3 flex items-center justify-between hover:bg-slate-800/60 transition-colors cursor-pointer group" onClick={onViewSample}>
                 <div className="flex items-center gap-3">
                    <div className="bg-indigo-500/20 p-2 rounded-md text-indigo-400">
@@ -178,75 +352,50 @@ const Dashboard: React.FC<DashboardProps> = ({
       {/* 2. Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Report Library Section (Left - 2 Columns) */}
-        <div className="lg:col-span-2 space-y-6">
-           <div className="flex items-center justify-between">
-              <h3 className="text-lg font-display font-bold text-white flex items-center gap-2">
-                 <Folder className="w-5 h-5 text-indigo-400" /> Report Library
-              </h3>
-              <span className="text-xs font-mono text-slate-500">{savedReports.length} Items</span>
-           </div>
+        {/* Report Library Section (Merged: Active Sessions + Saved Reports) */}
+        <div className="lg:col-span-2 h-full">
+            <div className="bg-surface rounded-2xl p-5 border border-white/5 h-full flex flex-col">
+               <div className="flex items-center justify-between mb-4 shrink-0">
+                  <h3 className="text-base font-display font-bold text-white flex items-center gap-2">
+                     <Folder className="w-4 h-4 text-indigo-400" /> Report Library
+                  </h3>
+                  <span className="text-[10px] font-mono text-slate-500">{totalItems} Items</span>
+               </div>
 
-           {savedReports.length === 0 ? (
-              <div className="bg-surface rounded-2xl p-8 border border-white/5 border-dashed flex flex-col items-center justify-center text-center h-64">
-                 <div className="bg-slate-800 p-4 rounded-full mb-4">
-                    <Database className="w-8 h-8 text-slate-600" />
-                 </div>
-                 <h4 className="text-white font-bold mb-2">Your library is empty</h4>
-                 <p className="text-slate-400 text-sm max-w-md">
-                    Search for stocks above and click "Save Report" to archive the full analysis in your library for offline viewing.
-                 </p>
-              </div>
-           ) : (
-             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {savedReports.map((item) => (
-                  <div 
-                    key={item.ticker} 
-                    onClick={() => onLoadReport(item)}
-                    className="bg-surface rounded-xl p-5 border border-white/5 hover:border-indigo-500/50 hover:bg-slate-800/80 transition-all cursor-pointer group relative shadow-lg"
-                  >
-                     <div className="flex justify-between items-start mb-3">
-                        <div>
-                           <div className="flex items-center gap-2">
-                              <div className="font-mono font-bold text-xl text-white group-hover:text-indigo-400 transition-colors">{item.ticker}</div>
-                              {item.fullReport && (
-                                <span title="Saved Locally" className="bg-emerald-500/10 p-1 rounded">
-                                   <Database className="w-3 h-3 text-emerald-400" />
-                                </span>
-                              )}
-                           </div>
-                           <div className="text-xs text-slate-400 truncate max-w-[140px]">{item.companyName}</div>
-                        </div>
-                        <button 
-                          onClick={(e) => onRemoveReport(item.ticker, e)}
-                          className="text-slate-600 hover:text-red-400 p-1.5 rounded-full hover:bg-white/5 transition-colors z-10"
-                        >
-                           <X className="w-4 h-4" />
-                        </button>
+               {totalItems === 0 ? (
+                  <div className="bg-slate-900/50 rounded-xl p-8 border border-white/5 border-dashed flex flex-col items-center justify-center text-center flex-1 min-h-[150px]">
+                     <div className="bg-slate-800 p-3 rounded-full mb-3">
+                        <Database className="w-6 h-6 text-slate-600" />
                      </div>
-                     
-                     <div className="h-px bg-white/5 w-full my-3"></div>
-
-                     <div className="flex justify-between items-end">
-                        <div>
-                           <div className="text-2xl font-mono font-bold text-white">{item.currentPrice}</div>
-                           <div className={`text-xs font-bold flex items-center gap-1 mt-1 ${item.priceChange.startsWith('+') ? 'text-green-400' : 'text-red-400'}`}>
-                              {item.priceChange.startsWith('+') ? <TrendingUp className="w-3 h-3"/> : <TrendingDown className="w-3 h-3"/>}
-                              {item.priceChange}
-                           </div>
-                        </div>
-                        <div className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border ${
-                           item.verdict === 'BUY' ? 'border-green-500/30 bg-green-500/10 text-green-400' : 
-                           item.verdict === 'SELL' ? 'border-red-500/30 bg-red-500/10 text-red-400' : 
-                           'border-amber-500/30 bg-amber-500/10 text-amber-400'
-                        }`}>
-                           {item.verdict}
-                        </div>
-                     </div>
+                     <h4 className="text-white font-bold mb-1 text-sm">Your library is empty</h4>
+                     <p className="text-slate-400 text-xs max-w-xs">
+                        Search for stocks above and click "Analyze" to generate a report.
+                     </p>
                   </div>
-                ))}
-             </div>
-           )}
+               ) : (
+                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3 auto-rows-min">
+                    {/* 1. Active / Processing / Ready Sessions (Top Priority) */}
+                    {analysisSessions.map((session) => (
+                       <LibraryCard 
+                          key={session.id} 
+                          session={session} 
+                          onClick={() => session.status === 'READY' && onViewAnalyzedReport(session.id)}
+                          onAction={() => onCancelAnalysis(session.id)}
+                       />
+                    ))}
+
+                    {/* 2. Saved Reports */}
+                    {savedReports.map((item) => (
+                       <LibraryCard 
+                          key={item.ticker} 
+                          savedItem={item}
+                          onClick={() => onLoadReport(item)}
+                          onAction={(e) => onRemoveReport(item.ticker, e)}
+                       />
+                    ))}
+                 </div>
+               )}
+            </div>
         </div>
 
         {/* Sidebar (Right - 1 Column) */}
@@ -272,7 +421,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                </div>
             </div>
 
-            {/* Recent Activity (Mocked) */}
+            {/* Recent Activity */}
             <div>
                <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-2">
                   <Clock className="w-4 h-4 text-slate-400" /> Recent Activity

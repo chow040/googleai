@@ -4,7 +4,7 @@ import Header from './components/Header';
 import ReportCard, { ReportCardSkeleton } from './components/ReportCard';
 import Dashboard from './components/Dashboard';
 import { generateEquityReport } from './services/geminiService';
-import { EquityReport, LoadingState, SavedReportItem, UserProfile } from './types';
+import { EquityReport, LoadingState, SavedReportItem, UserProfile, AnalysisSession } from './types';
 import { Search, Loader2, Sparkles, Eye, TrendingUp, TrendingDown, Minus, Bookmark, X, ArrowRight, Database } from 'lucide-react';
 
 const SAMPLE_REPORT: EquityReport = {
@@ -279,37 +279,80 @@ const MOCK_USER: UserProfile = {
   joinDate: "Nov 2024"
 };
 
+// Phases for simulated progress
+const ANALYSIS_PHASES = [
+  "Initializing secure uplink...",
+  "Scraping real-time market data...",
+  "Parsing SEC Filings (10-K, 10-Q)...",
+  "Analyzing Insider Trading patterns...",
+  "Calculating intrinsic value models...",
+  "Synthesizing investment thesis...",
+  "Finalizing Moonshot Report..."
+];
+
 function App() {
   const [ticker, setTicker] = useState('');
-  const [loadingState, setLoadingState] = useState<LoadingState>(LoadingState.IDLE);
+  
+  // View State (Replaces LoadingState for layout control)
+  const [viewMode, setViewMode] = useState<'DASHBOARD' | 'REPORT'>('DASHBOARD');
+  
+  // Current active report to display
   const [report, setReport] = useState<EquityReport | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  
+  // Background Analysis Sessions
+  const [analysisSessions, setAnalysisSessions] = useState<AnalysisSession[]>([]);
 
   // Autocomplete state
   const [suggestions, setSuggestions] = useState<{symbol: string, name: string}[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  // Saved Reports State (Renamed from Watchlist)
+  // Saved Reports
   const [savedReports, setSavedReports] = useState<SavedReportItem[]>(() => {
-    // New Key
     const saved = localStorage.getItem('ultramagnus_saved_reports');
     if (saved) return JSON.parse(saved);
-    
-    // Migration: Check Old Key
-    const old = localStorage.getItem('ultramagnus_watchlist');
-    if (old) {
-      const parsed = JSON.parse(old);
-      localStorage.setItem('ultramagnus_saved_reports', JSON.stringify(parsed)); // Migrate
-      localStorage.removeItem('ultramagnus_watchlist'); // Cleanup
-      return parsed;
-    }
-    
     return [];
   });
 
   useEffect(() => {
     localStorage.setItem('ultramagnus_saved_reports', JSON.stringify(savedReports));
   }, [savedReports]);
+
+  // PROGRESS SIMULATION EFFECT
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setAnalysisSessions(prevSessions => {
+        // Optimization: if no session is processing, return prev
+        if (!prevSessions.some(s => s.status === 'PROCESSING')) return prevSessions;
+
+        return prevSessions.map(session => {
+          if (session.status !== 'PROCESSING') return session;
+
+          // Logistic curve simulation: Fast at start, slow at end
+          const current = session.progress;
+          let next = current;
+          
+          if (current < 30) next += 2;
+          else if (current < 60) next += 1;
+          else if (current < 85) next += 0.5;
+          else if (current < 95) next += 0.1;
+          
+          // Map progress to phase text
+          const phaseIndex = Math.min(
+            Math.floor((next / 100) * ANALYSIS_PHASES.length), 
+            ANALYSIS_PHASES.length - 1
+          );
+
+          return {
+            ...session,
+            progress: Math.min(next, 99), // Cap at 99 until API returns
+            phase: ANALYSIS_PHASES[phaseIndex]
+          };
+        });
+      });
+    }, 150);
+
+    return () => clearInterval(interval);
+  }, []); // Run continuously
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.toUpperCase();
@@ -340,38 +383,83 @@ function App() {
     if (!targetTicker.trim()) return;
 
     if (!searchTicker) {
-      setTicker(targetTicker);
+      setTicker(''); // Clear input for next search
+    }
+    setShowSuggestions(false);
+
+    // Create unique ID for this session
+    const sessionId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+
+    // Prevent duplicate active analysis for the same ticker
+    if (analysisSessions.some(s => s.ticker === targetTicker && s.status === 'PROCESSING')) {
+        // Optional: Notify user
+        return; 
     }
 
-    setLoadingState(LoadingState.ANALYZING);
-    setError(null);
-    setReport(null);
-    setShowSuggestions(false);
+    const newSession: AnalysisSession = {
+      id: sessionId,
+      ticker: targetTicker,
+      progress: 0,
+      status: 'PROCESSING',
+      phase: ANALYSIS_PHASES[0]
+    };
+
+    setAnalysisSessions(prev => [newSession, ...prev]);
 
     try {
       const data = await generateEquityReport(targetTicker);
-      setReport(data);
-      setLoadingState(LoadingState.SUCCESS);
+      
+      // COMPLETE ANALYSIS
+      setAnalysisSessions(prev => prev.map(s => {
+        if (s.id !== sessionId) return s;
+        return {
+          ...s,
+          progress: 100,
+          status: 'READY',
+          phase: "Report Declassified. Ready for viewing.",
+          result: data
+        };
+      }));
+
     } catch (err) {
       console.error(err);
-      setError("Failed to generate report. Please try again or check the ticker.");
-      setLoadingState(LoadingState.ERROR);
+      setAnalysisSessions(prev => prev.map(s => {
+        if (s.id !== sessionId) return s;
+        return {
+          ...s,
+          status: 'ERROR',
+          progress: 0,
+          phase: "Analysis Failed. Connection terminated.",
+          error: "Failed to generate report. Please try again."
+        };
+      }));
     }
   };
 
   const handleViewSample = () => {
-    setLoadingState(LoadingState.SUCCESS);
     setReport(SAMPLE_REPORT);
     setTicker("ASTRO");
-    setError(null);
+    setViewMode('REPORT');
+  };
+
+  const handleViewAnalyzedReport = (sessionId: string) => {
+    const session = analysisSessions.find(s => s.id === sessionId);
+    if (session?.result) {
+      setReport(session.result);
+      setViewMode('REPORT');
+      // We keep the session in the list until manually dismissed
+    }
+  };
+
+  const handleCancelAnalysis = (sessionId: string) => {
+    setAnalysisSessions(prev => prev.filter(s => s.id !== sessionId));
   };
 
   // Reset to Dashboard (Home)
   const handleHome = () => {
-    setLoadingState(LoadingState.IDLE);
+    setViewMode('DASHBOARD');
     setReport(null);
     setTicker('');
-    setError(null);
   };
 
   const toggleSaveReport = (item: SavedReportItem) => {
@@ -390,31 +478,23 @@ function App() {
   
   const loadReport = (item: SavedReportItem) => {
     if (item.fullReport) {
-      setLoadingState(LoadingState.SUCCESS);
       setReport(item.fullReport);
-      setTicker(item.ticker);
-      setError(null);
+      setViewMode('REPORT');
     } else {
+      // Re-analyze if full report not saved (legacy support)
       handleSearch(undefined, item.ticker);
     }
   };
 
-  const isIdle = (loadingState as LoadingState) === LoadingState.IDLE;
   const isSaved = report ? savedReports.some(w => w.ticker === report.ticker) : false;
 
   return (
     <div className="min-h-screen font-sans bg-slate-950 text-slate-200 relative overflow-hidden pb-20 selection:bg-indigo-500/30">
       
-      {/* PROFESSIONAL BACKGROUND EFFECTS (Architectural Grid + Spotlight) */}
+      {/* PROFESSIONAL BACKGROUND EFFECTS */}
       <div className="fixed inset-0 z-0 pointer-events-none">
-        
-        {/* 1. Base Gradient (Deep Matte) */}
         <div className="absolute inset-0 bg-slate-950"></div>
-        
-        {/* 2. Top-Down Spotlight (Main Focus) */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1400px] h-[800px] bg-gradient-to-b from-indigo-900/10 via-slate-900/50 to-slate-950 opacity-70"></div>
-
-        {/* 3. Architectural Grid Pattern (Subtle Structure) */}
         <div className="absolute inset-0 opacity-[0.03]" 
              style={{
                backgroundImage: `linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)`,
@@ -422,20 +502,16 @@ function App() {
                maskImage: 'radial-gradient(circle at 50% 0%, black, transparent 80%)'
              }}>
         </div>
-        
-        {/* 4. Secondary Accent Hues (Very faint, corners only) */}
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-cyan-900/5 blur-[120px] mix-blend-screen"></div>
         <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-indigo-900/5 blur-[120px] mix-blend-screen"></div>
-        
       </div>
 
       <div className="relative z-10">
         <Header onHome={handleHome} savedCount={savedReports.length} />
         
-        <main className={`container mx-auto px-4 max-w-6xl transition-all duration-500 ease-in-out ${isIdle ? 'pt-8' : 'pt-6'}`}>
+        <main className={`container mx-auto px-4 max-w-6xl transition-all duration-500 ease-in-out ${viewMode === 'DASHBOARD' ? 'pt-8' : 'pt-6'}`}>
           
-          {isIdle ? (
-            // USER DASHBOARD (REPLACES OLD LANDING PAGE)
+          {viewMode === 'DASHBOARD' ? (
             <Dashboard 
               user={MOCK_USER}
               savedReports={savedReports}
@@ -444,34 +520,18 @@ function App() {
               onRemoveReport={removeReport}
               tickerInput={ticker}
               onTickerChange={handleInputChange}
-              isAnalyzing={loadingState === LoadingState.ANALYZING}
               suggestions={suggestions}
               showSuggestions={showSuggestions}
               onSelectSuggestion={handleSelectSuggestion}
               setShowSuggestions={setShowSuggestions}
               onViewSample={handleViewSample}
+              analysisSessions={analysisSessions}
+              onViewAnalyzedReport={handleViewAnalyzedReport}
+              onCancelAnalysis={handleCancelAnalysis}
             />
           ) : (
-            // REPORT VIEW
             <div className="min-h-[400px]">
-              {/* Back button or Context Header could go here */}
-              {loadingState === LoadingState.ANALYZING && (
-                <ReportCardSkeleton />
-              )}
-
-              {loadingState === LoadingState.ERROR && (
-                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-6 text-center max-w-lg mx-auto mt-12 backdrop-blur-sm">
-                  <p className="text-red-400 font-medium">{error}</p>
-                  <button 
-                    onClick={handleHome}
-                    className="mt-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm text-white transition-colors border border-white/10"
-                  >
-                    Return to Dashboard
-                  </button>
-                </div>
-              )}
-
-              {loadingState === LoadingState.SUCCESS && report && (
+              {report && (
                 <ReportCard 
                   report={report} 
                   isSaved={isSaved}
