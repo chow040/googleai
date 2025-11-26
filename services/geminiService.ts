@@ -1,5 +1,5 @@
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { EquityReport } from "../types";
 
 const GEMINI_API_KEY = process.env.API_KEY || '';
@@ -54,11 +54,6 @@ export const chatWithGemini = async (
   6. Format responses with clean Markdown (bolding key figures).
   `;
 
-  // Convert history to API format, but keep it short to save tokens if needed
-  // We only send the last few turns + the new query effectively via the prompt construction or chat history
-  // For the V2 SDK, we can use the chat functionality or just a single generateContent with history formatted in prompt.
-  // Given the stateless nature of this function call pattern, we will construct the prompt with history.
-
   const lastTurn = messageHistory[messageHistory.length - 1];
   
   const prompt = `
@@ -77,7 +72,13 @@ export const chatWithGemini = async (
       contents: prompt,
       config: {
         systemInstruction: systemInstruction,
-        tools: [{ googleSearch: {} }], // Enable Web Search for Q&A
+        tools: [{ googleSearch: {} }],
+        safetySettings: [
+          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH }
+        ]
       }
     });
     return response.text || "I couldn't generate a response at the moment.";
@@ -98,11 +99,13 @@ export const generateEquityReport = async (ticker: string): Promise<EquityReport
   Perform a deep-dive analysis on the stock ticker: ${ticker}.
   
   Use Google Search to find the latest real-time price, financial data, price history, recent news, earnings call transcripts, upcoming events, and DIRECT COMPETITORS.
-  Crucially, look for INSIDER TRADING data, SHORT INTEREST data, and construct a 1-YEAR SCENARIO ANALYSIS (Bear/Base/Bull).
+  Look for publicly reported insider transactions and short interest data.
+  Construct a 1-YEAR SCENARIO ANALYSIS (Bear/Base/Bull).
   
   Also, analyze the historical sentiment from approximately 3-6 months ago to determine a "Previous Verdict" and identify WHAT CHANGED to cause the current verdict.
 
   Return the analysis as a VALID JSON object wrapped in a markdown code block (\`\`\`json ... \`\`\`).
+  If specific data (like exact insider trades) is not available, use "N/A" or reasonable estimates based on available context. DO NOT refuse to generate the report.
   
   The JSON structure must strictly match this format:
   {
@@ -233,7 +236,12 @@ export const generateEquityReport = async (ticker: string): Promise<EquityReport
       contents: prompt,
       config: {
         tools: [{ googleSearch: {} }],
-        // Note: responseMimeType cannot be used with googleSearch tool
+        safetySettings: [
+          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH }
+        ]
       }
     });
 
@@ -262,8 +270,12 @@ export const generateEquityReport = async (ticker: string): Promise<EquityReport
     }
 
     if (!jsonString) {
-      console.error("Raw Output:", text);
-      throw new Error("Failed to parse analysis report format: No JSON object found.");
+      console.error("Gemini Response Raw Output:", text);
+      // Check if text is empty and log it.
+      if (!text) {
+        throw new Error("Analysis failed: The AI model returned an empty response. This is often due to safety filters or lack of search results.");
+      }
+      throw new Error("Failed to parse analysis report format: No JSON object found in the response.");
     }
 
     const reportData = JSON.parse(jsonString) as EquityReport;
@@ -271,7 +283,7 @@ export const generateEquityReport = async (ticker: string): Promise<EquityReport
     // Attach sources to the report object
     reportData.sources = sources;
     
-    // Inject Report Date (Server time / Client time)
+    // Inject Report Date
     reportData.reportDate = new Date().toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',

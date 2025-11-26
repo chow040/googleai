@@ -306,16 +306,27 @@ function App() {
   const [suggestions, setSuggestions] = useState<{symbol: string, name: string}[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  // Saved Reports
-  const [savedReports, setSavedReports] = useState<SavedReportItem[]>(() => {
-    const saved = localStorage.getItem('ultramagnus_saved_reports');
+  // Unified Report Library (Auto-saved history + Bookmarked items)
+  const [reportLibrary, setReportLibrary] = useState<SavedReportItem[]>(() => {
+    // Attempt to load new library format
+    const saved = localStorage.getItem('ultramagnus_library_v1');
     if (saved) return JSON.parse(saved);
+    
+    // Fallback: Migrate legacy saved reports
+    const legacy = localStorage.getItem('ultramagnus_saved_reports');
+    if (legacy) {
+      const parsedLegacy = JSON.parse(legacy);
+      return parsedLegacy.map((item: any) => ({
+        ...item,
+        isBookmarked: true // Legacy items were all "saved"
+      }));
+    }
     return [];
   });
 
   useEffect(() => {
-    localStorage.setItem('ultramagnus_saved_reports', JSON.stringify(savedReports));
-  }, [savedReports]);
+    localStorage.setItem('ultramagnus_library_v1', JSON.stringify(reportLibrary));
+  }, [reportLibrary]);
 
   // PROGRESS SIMULATION EFFECT
   useEffect(() => {
@@ -421,6 +432,24 @@ function App() {
         };
       }));
 
+      // AUTO-SAVE to Library (as Unbookmarked / Recent)
+      const newItem: SavedReportItem = {
+        ticker: data.ticker,
+        companyName: data.companyName,
+        currentPrice: data.currentPrice,
+        priceChange: data.priceChange,
+        verdict: data.verdict,
+        addedAt: Date.now(),
+        fullReport: data,
+        isBookmarked: false // Auto-save defaults to history, not bookmark
+      };
+
+      setReportLibrary(prev => {
+        // Remove old version if exists (so we update with fresh data)
+        const filtered = prev.filter(i => i.ticker !== newItem.ticker);
+        return [newItem, ...filtered];
+      });
+
     } catch (err) {
       console.error(err);
       setAnalysisSessions(prev => prev.map(s => {
@@ -447,7 +476,6 @@ function App() {
     if (session?.result) {
       setReport(session.result);
       setViewMode('REPORT');
-      // We keep the session in the list until manually dismissed
     }
   };
 
@@ -462,18 +490,27 @@ function App() {
     setTicker('');
   };
 
-  const toggleSaveReport = (item: SavedReportItem) => {
-    const exists = savedReports.some(i => i.ticker === item.ticker);
-    if (exists) {
-      setSavedReports(savedReports.filter(i => i.ticker !== item.ticker));
-    } else {
-      setSavedReports([...savedReports, item]);
-    }
+  // Toggle Bookmark Status (Save/Unsave without deleting)
+  const toggleBookmarkReport = (item: SavedReportItem) => {
+    setReportLibrary(prev => {
+      const existing = prev.find(i => i.ticker === item.ticker);
+      if (existing) {
+        // Update existing item's bookmark status
+        return prev.map(i => i.ticker === item.ticker 
+          ? { ...i, isBookmarked: !i.isBookmarked } 
+          : i
+        );
+      } else {
+        // Edge case: Add new item as bookmarked (if not found in library)
+        return [{ ...item, isBookmarked: true }, ...prev];
+      }
+    });
   };
 
-  const removeReport = (tickerToRemove: string, e: React.MouseEvent) => {
+  // Permanently Remove from Library
+  const deleteReport = (tickerToRemove: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setSavedReports(savedReports.filter(item => item.ticker !== tickerToRemove));
+    setReportLibrary(reportLibrary.filter(item => item.ticker !== tickerToRemove));
   };
   
   const loadReport = (item: SavedReportItem) => {
@@ -486,7 +523,8 @@ function App() {
     }
   };
 
-  const isSaved = report ? savedReports.some(w => w.ticker === report.ticker) : false;
+  const currentReportInLibrary = report ? reportLibrary.find(w => w.ticker === report.ticker) : undefined;
+  const isBookmarked = currentReportInLibrary?.isBookmarked || false;
 
   return (
     <div className="min-h-screen font-sans bg-slate-950 text-slate-200 relative overflow-hidden pb-20 selection:bg-indigo-500/30">
@@ -507,17 +545,17 @@ function App() {
       </div>
 
       <div className="relative z-10">
-        <Header onHome={handleHome} savedCount={savedReports.length} />
+        <Header onHome={handleHome} savedCount={reportLibrary.filter(r => r.isBookmarked).length} />
         
         <main className={`container mx-auto px-4 max-w-6xl transition-all duration-500 ease-in-out ${viewMode === 'DASHBOARD' ? 'pt-8' : 'pt-6'}`}>
           
           {viewMode === 'DASHBOARD' ? (
             <Dashboard 
               user={MOCK_USER}
-              savedReports={savedReports}
+              reportLibrary={reportLibrary}
               onSearch={handleSearch}
               onLoadReport={loadReport}
-              onRemoveReport={removeReport}
+              onDeleteReport={deleteReport}
               tickerInput={ticker}
               onTickerChange={handleInputChange}
               suggestions={suggestions}
@@ -534,8 +572,8 @@ function App() {
               {report && (
                 <ReportCard 
                   report={report} 
-                  isSaved={isSaved}
-                  onToggleSave={toggleSaveReport}
+                  isBookmarked={isBookmarked}
+                  onToggleBookmark={toggleBookmarkReport}
                 />
               )}
             </div>

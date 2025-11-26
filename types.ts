@@ -62,6 +62,7 @@ export interface SavedReportItem {
   verdict: "BUY" | "HOLD" | "SELL";
   addedAt: number;
   fullReport?: EquityReport; // Stores the complete analysis
+  isBookmarked?: boolean; // True if user manually saved/pinned it, False if auto-saved history
 }
 
 export interface UserProfile {

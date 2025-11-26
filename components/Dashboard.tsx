@@ -1,3 +1,4 @@
+
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { SavedReportItem, UserProfile, AnalysisSession, EquityReport } from '../types';
 import { 
@@ -19,15 +20,16 @@ import {
   AlertOctagon,
   Play,
   Trash2,
-  Minus
+  Minus,
+  Bookmark
 } from 'lucide-react';
 
 interface DashboardProps {
   user: UserProfile;
-  savedReports: SavedReportItem[];
+  reportLibrary: SavedReportItem[];
   onSearch: (e?: React.FormEvent, ticker?: string) => void;
   onLoadReport: (item: SavedReportItem) => void;
-  onRemoveReport: (ticker: string, e: React.MouseEvent) => void;
+  onDeleteReport: (ticker: string, e: React.MouseEvent) => void;
   tickerInput: string;
   onTickerChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   suggestions: {symbol: string, name: string}[];
@@ -128,7 +130,7 @@ const LibraryCard = ({
         price: session.result.currentPrice,
         change: session.result.priceChange,
         verdict: session.result.verdict,
-        isSaved: false,
+        isBookmarked: false,
         isNew: true
      };
   } else if (savedItem) {
@@ -138,7 +140,7 @@ const LibraryCard = ({
         price: savedItem.currentPrice,
         change: savedItem.priceChange,
         verdict: savedItem.verdict,
-        isSaved: true,
+        isBookmarked: savedItem.isBookmarked,
         isNew: false
      };
   } else {
@@ -154,7 +156,9 @@ const LibraryCard = ({
         bg-slate-900 rounded-xl p-3 border 
         ${displayData.isNew 
            ? 'border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.15)]' 
-           : 'border-white/5 hover:border-indigo-500/50 hover:bg-slate-900/80 shadow-md'
+           : displayData.isBookmarked
+             ? 'border-indigo-500/40 bg-indigo-950/10 shadow-lg'
+             : 'border-white/5 hover:border-indigo-500/30 hover:bg-slate-900/80'
         }
         transition-all cursor-pointer group relative h-full min-h-[105px] flex flex-col justify-between animate-fade-in-up
       `}
@@ -173,9 +177,14 @@ const LibraryCard = ({
                 <div className="font-mono font-bold text-base text-white group-hover:text-indigo-400 transition-colors truncate">
                    {displayData.ticker}
                 </div>
-                {displayData.isSaved && (
-                  <span className="bg-white/5 p-0.5 rounded shrink-0">
-                     <Database className="w-2.5 h-2.5 text-slate-500 group-hover:text-emerald-400 transition-colors" />
+                {/* Status Indicator */}
+                {displayData.isBookmarked ? (
+                  <span className="bg-indigo-500/20 p-0.5 rounded shrink-0 border border-indigo-500/30" title="Bookmarked">
+                     <Bookmark className="w-2.5 h-2.5 text-indigo-400 fill-indigo-400" />
+                  </span>
+                ) : !displayData.isNew && (
+                  <span className="bg-white/5 p-0.5 rounded shrink-0" title="Recent History">
+                     <Clock className="w-2.5 h-2.5 text-slate-600 group-hover:text-slate-400 transition-colors" />
                   </span>
                 )}
              </div>
@@ -184,6 +193,7 @@ const LibraryCard = ({
           <button 
             onClick={(e) => { e.stopPropagation(); onAction(e); }}
             className="text-slate-600 hover:text-red-400 p-1 rounded-full hover:bg-white/5 transition-colors z-10 shrink-0"
+            title="Delete from Library"
           >
              <X className="w-3 h-3" />
           </button>
@@ -214,10 +224,10 @@ const LibraryCard = ({
 
 const Dashboard: React.FC<DashboardProps> = ({
   user,
-  savedReports,
+  reportLibrary,
   onSearch,
   onLoadReport,
-  onRemoveReport,
+  onDeleteReport,
   tickerInput,
   onTickerChange,
   suggestions,
@@ -244,8 +254,40 @@ const Dashboard: React.FC<DashboardProps> = ({
     };
   }, []);
 
-  // Combine counts for stats
-  const totalItems = savedReports.length + analysisSessions.length;
+  // Filter out duplicate tickers in sessions vs library to avoid showing same ticker twice if processing/viewed
+  // Actually, we want to show active sessions at top, library below.
+  // If an active session finishes, it moves to library in App.tsx. 
+  // But during 'READY' state in session, it might exist in both temporarily until user acts or we clean up.
+  // We will prioritize showing the Active Session card if it exists.
+  
+  const displayableLibrary = reportLibrary.filter(item => 
+     !analysisSessions.some(session => session.ticker === item.ticker)
+  );
+  
+  const totalItems = displayableLibrary.length + analysisSessions.length;
+  const bookmarkedCount = reportLibrary.filter(i => i.isBookmarked).length;
+
+  // Generate Real Recent Activity from Library Data
+  const recentActivity = [...reportLibrary]
+    .sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))
+    .slice(0, 5)
+    .map(item => {
+      const diff = Date.now() - (item.addedAt || Date.now());
+      const mins = Math.floor(diff / 60000);
+      const hrs = Math.floor(mins / 60);
+      const days = Math.floor(hrs / 24);
+      
+      let timeStr = 'Just now';
+      if (days > 0) timeStr = `${days}d ago`;
+      else if (hrs > 0) timeStr = `${hrs}h ago`;
+      else if (mins > 0) timeStr = `${mins}m ago`;
+
+      return {
+        text: `${item.isBookmarked ? 'Bookmarked' : 'Analyzed'} ${item.ticker}`,
+        time: timeStr,
+        icon: item.isBookmarked ? Bookmark : Search
+      };
+    });
 
   return (
     <div className="animate-fade-in w-full pb-20">
@@ -264,7 +306,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               Welcome back, <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">{user.name}</span>
             </h2>
             <p className="text-slate-400 mt-2 max-w-xl">
-              Markets are {marketStatus} today. You have {savedReports.length} saved reports in your library.
+              Markets are {marketStatus} today. You have {bookmarkedCount} saved reports.
             </p>
           </div>
           
@@ -352,7 +394,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       {/* 2. Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Report Library Section (Merged: Active Sessions + Saved Reports) */}
+        {/* Report Library Section (Merged: Active Sessions + Saved + Recent History) */}
         <div className="lg:col-span-2 h-full">
             <div className="bg-surface rounded-2xl p-5 border border-white/5 h-full flex flex-col">
                <div className="flex items-center justify-between mb-4 shrink-0">
@@ -384,13 +426,13 @@ const Dashboard: React.FC<DashboardProps> = ({
                        />
                     ))}
 
-                    {/* 2. Saved Reports */}
-                    {savedReports.map((item) => (
+                    {/* 2. Library Items (Saved + Recent) */}
+                    {displayableLibrary.map((item) => (
                        <LibraryCard 
                           key={item.ticker} 
                           savedItem={item}
                           onClick={() => onLoadReport(item)}
-                          onAction={(e) => onRemoveReport(item.ticker, e)}
+                          onAction={(e) => onDeleteReport(item.ticker, e)}
                        />
                     ))}
                  </div>
@@ -421,27 +463,27 @@ const Dashboard: React.FC<DashboardProps> = ({
                </div>
             </div>
 
-            {/* Recent Activity */}
+            {/* Recent Activity (Dynamic) */}
             <div>
                <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-2">
                   <Clock className="w-4 h-4 text-slate-400" /> Recent Activity
                </h3>
                <div className="space-y-3">
-                  {[
-                    { text: "Analyzed NVDA", time: "2h ago", icon: Search },
-                    { text: "Saved PLTR Report", time: "5h ago", icon: Database },
-                    { text: "Exported TSLA PDF", time: "1d ago", icon: Globe },
-                  ].map((activity, i) => (
-                     <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/30 border border-white/5">
-                        <div className="p-2 bg-slate-800 rounded-lg">
-                           <activity.icon className="w-3 h-3 text-slate-400" />
-                        </div>
-                        <div className="flex-1">
-                           <div className="text-xs font-bold text-slate-300">{activity.text}</div>
-                           <div className="text-[10px] text-slate-500">{activity.time}</div>
-                        </div>
-                     </div>
-                  ))}
+                  {recentActivity.length > 0 ? (
+                    recentActivity.map((activity, i) => (
+                       <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/30 border border-white/5 animate-fade-in">
+                          <div className="p-2 bg-slate-800 rounded-lg">
+                             <activity.icon className="w-3 h-3 text-slate-400" />
+                          </div>
+                          <div className="flex-1">
+                             <div className="text-xs font-bold text-slate-300">{activity.text}</div>
+                             <div className="text-[10px] text-slate-500">{activity.time}</div>
+                          </div>
+                       </div>
+                    ))
+                  ) : (
+                    <div className="text-xs text-slate-500 italic p-2">No recent activity</div>
+                  )}
                </div>
             </div>
             

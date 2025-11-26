@@ -79,8 +79,8 @@ import { jsPDF } from 'jspdf';
 
 interface ReportCardProps {
   report: EquityReport;
-  isSaved: boolean;
-  onToggleSave: (item: SavedReportItem) => void;
+  isBookmarked: boolean;
+  onToggleBookmark: (item: SavedReportItem) => void;
 }
 
 // Helper to parse price strings "$150.00" -> 150.00
@@ -631,7 +631,7 @@ const ChatWidget = ({
   );
 };
 
-const ReportCard: React.FC<ReportCardProps> = ({ report, isSaved, onToggleSave }) => {
+const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleBookmark }) => {
   const [chartTab, setChartTab] = useState<'financials' | 'price' | 'peers'>('price');
   const [finSubTab, setFinSubTab] = useState<'overview' | 'table'>('overview');
   const [feedback, setFeedback] = useState<'yes' | 'no' | null>(null);
@@ -695,15 +695,16 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isSaved, onToggleSave }
     localStorage.setItem(`ultramagnus_thesis_${report.ticker}`, newValue);
   };
 
-  const handleSaveToggle = () => {
-    onToggleSave({
+  const handleBookmarkToggle = () => {
+    onToggleBookmark({
       ticker: report.ticker,
       companyName: report.companyName,
       currentPrice: report.currentPrice,
       priceChange: report.priceChange,
       verdict: report.verdict,
       addedAt: Date.now(),
-      fullReport: report // Pass the full report object to save
+      fullReport: report,
+      isBookmarked: !isBookmarked
     });
   };
 
@@ -971,11 +972,11 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isSaved, onToggleSave }
           
           <div className="flex items-center gap-2 print:hidden" data-html2canvas-ignore>
             <button 
-              onClick={handleSaveToggle}
-              className={`px-3 py-2 text-xs font-medium rounded-lg border transition-colors flex items-center gap-2 ${isSaved ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-white/10'}`}
+              onClick={handleBookmarkToggle}
+              className={`px-3 py-2 text-xs font-medium rounded-lg border transition-colors flex items-center gap-2 ${isBookmarked ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-white/10'}`}
             >
-              {isSaved ? <FolderCheck className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-              {isSaved ? 'Saved' : 'Save Report'}
+              {isBookmarked ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
+              {isBookmarked ? 'Bookmarked' : 'Bookmark Report'}
             </button>
             <button 
               onClick={handleExportCSV}
