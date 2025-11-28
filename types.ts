@@ -71,10 +71,13 @@ export interface SavedReportItem {
 }
 
 export interface UserProfile {
+  id: string;
   name: string;
-  tier: "Free" | "Pro" | "Institutional";
+  email: string;
+  tier: "Guest" | "Pro" | "Institutional";
   avatarUrl?: string;
   joinDate: string;
+  apiKey?: string; // Optional: User's custom API key
 }
 
 export interface PriceTargetModel {

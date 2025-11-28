@@ -3,6 +3,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import Header from './components/Header';
 import ReportCard, { ReportCardSkeleton } from './components/ReportCard';
 import Dashboard from './components/Dashboard';
+import AuthModal from './components/AuthModal';
+import SettingsModal from './components/SettingsModal';
+import LandingPage from './components/LandingPage';
 import { generateEquityReport } from './services/geminiService';
 import { EquityReport, LoadingState, SavedReportItem, UserProfile, AnalysisSession } from './types';
 import { Search, Loader2, Sparkles, Eye, TrendingUp, TrendingDown, Minus, Bookmark, X, ArrowRight, Database } from 'lucide-react';
@@ -293,13 +296,6 @@ const POPULAR_STOCKS = [
   { symbol: 'F', name: 'Ford Motor Co.' }
 ];
 
-// Mock User Profile
-const MOCK_USER: UserProfile = {
-  name: "Trader One",
-  tier: "Pro",
-  joinDate: "Nov 2024"
-};
-
 // Phases for simulated progress
 const ANALYSIS_PHASES = [
   "Initializing secure uplink...",
@@ -315,7 +311,7 @@ function App() {
   const [ticker, setTicker] = useState('');
   
   // View State (Replaces LoadingState for layout control)
-  const [viewMode, setViewMode] = useState<'DASHBOARD' | 'REPORT'>('DASHBOARD');
+  const [viewMode, setViewMode] = useState<'LANDING' | 'DASHBOARD' | 'REPORT'>('LANDING');
   
   // Current active report to display
   const [report, setReport] = useState<EquityReport | null>(null);
@@ -326,6 +322,15 @@ function App() {
   // Autocomplete state
   const [suggestions, setSuggestions] = useState<{symbol: string, name: string}[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // User & Auth State
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalMessage, setAuthModalMessage] = useState<string>(''); // Dynamic message for auth modal
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  
+  // Guest Usage Tracking
+  const [guestUsageCount, setGuestUsageCount] = useState(0);
 
   // Unified Report Library (Auto-saved history + Bookmarked items)
   const [reportLibrary, setReportLibrary] = useState<SavedReportItem[]>(() => {
@@ -344,6 +349,19 @@ function App() {
     }
     return [];
   });
+
+  // Load User & Usage from LocalStorage
+  useEffect(() => {
+    const savedUser = localStorage.getItem('ultramagnus_user');
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+    }
+    
+    const usage = localStorage.getItem('ultramagnus_guest_usage');
+    if (usage) {
+      setGuestUsageCount(parseInt(usage, 10));
+    }
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('ultramagnus_library_v1', JSON.stringify(reportLibrary));
@@ -414,6 +432,10 @@ function App() {
     const targetTicker = searchTicker || ticker;
     if (!targetTicker.trim()) return;
 
+    // --- TEASER MODE ---
+    // We allow guests to proceed freely. The ReportCard component will handle masking/locking data
+    // based on user status. We do NOT block the search here anymore.
+
     if (!searchTicker) {
       setTicker(''); // Clear input for next search
     }
@@ -424,7 +446,6 @@ function App() {
 
     // Prevent duplicate active analysis for the same ticker
     if (analysisSessions.some(s => s.ticker === targetTicker && s.status === 'PROCESSING')) {
-        // Optional: Notify user
         return; 
     }
 
@@ -470,8 +491,16 @@ function App() {
         const filtered = prev.filter(i => i.ticker !== newItem.ticker);
         return [newItem, ...filtered];
       });
+      
+      // Track usage (legacy counter, kept for potential future use)
+      const customKey = localStorage.getItem('ultramagnus_user_api_key');
+      if (!user && !customKey) {
+        const newCount = guestUsageCount + 1;
+        setGuestUsageCount(newCount);
+        localStorage.setItem('ultramagnus_guest_usage', newCount.toString());
+      }
 
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       setAnalysisSessions(prev => prev.map(s => {
         if (s.id !== sessionId) return s;
@@ -480,7 +509,7 @@ function App() {
           status: 'ERROR',
           progress: 0,
           phase: "Analysis Failed. Connection terminated.",
-          error: "Failed to generate report. Please try again."
+          error: err.message || "Failed to generate report."
         };
       }));
     }
@@ -504,11 +533,27 @@ function App() {
     setAnalysisSessions(prev => prev.filter(s => s.id !== sessionId));
   };
 
-  // Reset to Dashboard (Home)
+  // Smart Navigation (Logo Click)
   const handleHome = () => {
-    setViewMode('DASHBOARD');
-    setReport(null);
-    setTicker('');
+    // If viewing a report, go back to Dashboard to search again
+    if (viewMode === 'REPORT') {
+      setViewMode('DASHBOARD');
+      setReport(null);
+      setTicker('');
+      return;
+    }
+
+    // If on Dashboard...
+    if (viewMode === 'DASHBOARD') {
+      if (user) {
+        // Logged in users stay on Dashboard (reset search)
+        setTicker('');
+        setShowSuggestions(false);
+      } else {
+        // Guests exit to Landing Page
+        setViewMode('LANDING');
+      }
+    }
   };
 
   // Toggle Bookmark Status (Save/Unsave without deleting)
@@ -544,13 +589,43 @@ function App() {
     }
   };
 
+  // Auth Handlers
+  const handleLogin = (email: string, name: string) => {
+    const newUser: UserProfile = {
+      id: Date.now().toString(),
+      name: name,
+      email: email,
+      tier: 'Pro', // Simulate upgrade on login
+      joinDate: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    };
+    setUser(newUser);
+    localStorage.setItem('ultramagnus_user', JSON.stringify(newUser));
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('ultramagnus_user');
+  };
+  
+  const handleOpenAuth = () => {
+     setAuthModalMessage('Unlock full access to Ultramagnus.'); // Reset message
+     setIsAuthModalOpen(true);
+  }
+
   const currentReportInLibrary = report ? reportLibrary.find(w => w.ticker === report.ticker) : undefined;
   const isBookmarked = currentReportInLibrary?.isBookmarked || false;
+
+  // Fallback guest user for display if no user logged in
+  const displayUser = user || { name: "Guest Trader", tier: "Guest", email: "", joinDate: "", id: "guest" };
+
+  // Determine Teaser Mode: Guest + No Custom Key + Not Demo
+  const customKey = localStorage.getItem('ultramagnus_user_api_key');
+  const isTeaserMode = !user && !customKey && report?.ticker !== 'ASTRO';
 
   return (
     <div className="min-h-screen font-sans bg-slate-950 text-slate-200 relative overflow-hidden pb-20 selection:bg-indigo-500/30">
       
-      {/* PROFESSIONAL BACKGROUND EFFECTS */}
+      {/* PROFESSIONAL BACKGROUND EFFECTS (Shared across Landing and Dashboard) */}
       <div className="fixed inset-0 z-0 pointer-events-none">
         <div className="absolute inset-0 bg-slate-950"></div>
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1400px] h-[800px] bg-gradient-to-b from-indigo-900/10 via-slate-900/50 to-slate-950 opacity-70"></div>
@@ -565,43 +640,75 @@ function App() {
         <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-indigo-900/5 blur-[120px] mix-blend-screen"></div>
       </div>
 
-      <div className="relative z-10">
-        <Header onHome={handleHome} savedCount={reportLibrary.filter(r => r.isBookmarked).length} />
-        
-        <main className={`container mx-auto px-4 max-w-6xl transition-all duration-500 ease-in-out ${viewMode === 'DASHBOARD' ? 'pt-8' : 'pt-6'}`}>
+      {viewMode === 'LANDING' ? (
+        <LandingPage 
+           onStartAnalysis={() => setViewMode('DASHBOARD')}
+           onViewDemo={handleViewSample} 
+           onLogin={handleOpenAuth}
+        />
+      ) : (
+        <div className="relative z-10">
+          <Header 
+            onHome={handleHome} 
+            savedCount={reportLibrary.filter(r => r.isBookmarked).length} 
+            user={user}
+            onLogin={handleOpenAuth}
+            onLogout={handleLogout}
+            onOpenSettings={() => setIsSettingsModalOpen(true)}
+          />
           
-          {viewMode === 'DASHBOARD' ? (
-            <Dashboard 
-              user={MOCK_USER}
-              reportLibrary={reportLibrary}
-              onSearch={handleSearch}
-              onLoadReport={loadReport}
-              onDeleteReport={deleteReport}
-              tickerInput={ticker}
-              onTickerChange={handleInputChange}
-              suggestions={suggestions}
-              showSuggestions={showSuggestions}
-              onSelectSuggestion={handleSelectSuggestion}
-              setShowSuggestions={setShowSuggestions}
-              onViewSample={handleViewSample}
-              analysisSessions={analysisSessions}
-              onViewAnalyzedReport={handleViewAnalyzedReport}
-              onCancelAnalysis={handleCancelAnalysis}
-            />
-          ) : (
-            <div className="min-h-[400px]">
-              {report && (
-                <ReportCard 
-                  report={report} 
-                  isBookmarked={isBookmarked}
-                  onToggleBookmark={toggleBookmarkReport}
-                />
-              )}
-            </div>
-          )}
+          <main className={`container mx-auto px-4 max-w-6xl transition-all duration-500 ease-in-out ${viewMode === 'DASHBOARD' ? 'pt-8' : 'pt-6'}`}>
+            
+            {viewMode === 'DASHBOARD' ? (
+              <Dashboard 
+                user={displayUser}
+                reportLibrary={reportLibrary}
+                onSearch={handleSearch}
+                onLoadReport={loadReport}
+                onDeleteReport={deleteReport}
+                tickerInput={ticker}
+                onTickerChange={handleInputChange}
+                suggestions={suggestions}
+                showSuggestions={showSuggestions}
+                onSelectSuggestion={handleSelectSuggestion}
+                setShowSuggestions={setShowSuggestions}
+                onViewSample={handleViewSample}
+                analysisSessions={analysisSessions}
+                onViewAnalyzedReport={handleViewAnalyzedReport}
+                onCancelAnalysis={handleCancelAnalysis}
+              />
+            ) : (
+              <div className="min-h-[400px]">
+                {report && (
+                  <ReportCard 
+                    report={report} 
+                    isBookmarked={isBookmarked}
+                    onToggleBookmark={toggleBookmarkReport}
+                    isTeaserMode={isTeaserMode}
+                    onUnlock={handleOpenAuth}
+                  />
+                )}
+              </div>
+            )}
 
-        </main>
-      </div>
+          </main>
+        </div>
+      )}
+
+      {/* Modals */}
+      <AuthModal 
+        isOpen={isAuthModalOpen} 
+        onClose={() => setIsAuthModalOpen(false)}
+        onLogin={handleLogin}
+        message={authModalMessage}
+      />
+      
+      <SettingsModal 
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        user={user}
+      />
+
     </div>
   );
 }

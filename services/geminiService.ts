@@ -2,9 +2,11 @@
 import { GoogleGenAI } from "@google/genai";
 import { EquityReport } from "../types";
 
-const GEMINI_API_KEY = process.env.API_KEY || '';
-
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+// Helper to get the best available API key
+const getApiKey = () => {
+  const storedKey = localStorage.getItem('ultramagnus_user_api_key');
+  return storedKey || process.env.API_KEY || '';
+};
 
 export const chatWithGemini = async (
   report: EquityReport, 
@@ -12,9 +14,14 @@ export const chatWithGemini = async (
   userNotes?: string, 
   userThesis?: string
 ): Promise<string> => {
-  if (!GEMINI_API_KEY) {
-    return "API Key is missing. Please check your configuration.";
+  const apiKey = getApiKey();
+  
+  if (!apiKey) {
+    return "API Key is missing. Please add your Gemini API Key in Settings.";
   }
+  
+  // Initialize AI with the specific key for this request to ensure it uses the latest
+  const ai = new GoogleGenAI({ apiKey });
 
   const contextSummary = `
     STOCK ANALYSIS CONTEXT:
@@ -69,14 +76,19 @@ export const chatWithGemini = async (
     return response.text || "I couldn't generate a response.";
   } catch (error) {
     console.error("Chat Error:", error);
-    return "Connection error. Please try again.";
+    return "Connection error. Please try again. If using a custom API key, ensure it is valid.";
   }
 };
 
 export const generateEquityReport = async (ticker: string): Promise<EquityReport> => {
-  if (!GEMINI_API_KEY) {
-    throw new Error("API Key is missing.");
+  const apiKey = getApiKey();
+  
+  if (!apiKey) {
+    throw new Error("API Key is missing. Please add your Gemini API Key in Settings.");
   }
+  
+  // Initialize AI with the specific key for this request
+  const ai = new GoogleGenAI({ apiKey });
 
   const prompt = `
   Generate a comprehensive professional equity research report for ${ticker}.
@@ -190,6 +202,6 @@ export const generateEquityReport = async (ticker: string): Promise<EquityReport
 
   } catch (error) {
     console.error("Report Generation Error:", error);
-    throw new Error("Failed to generate report. Please try again.");
+    throw new Error("Failed to generate report. Check your API key or try again.");
   }
 };

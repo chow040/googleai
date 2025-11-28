@@ -81,6 +81,8 @@ interface ReportCardProps {
   report: EquityReport;
   isBookmarked: boolean;
   onToggleBookmark: (item: SavedReportItem) => void;
+  isTeaserMode?: boolean;
+  onUnlock?: () => void;
 }
 
 // Helper to parse price strings "$150.00" -> 150.00
@@ -196,6 +198,35 @@ const ExpandableText = ({ text }: { text: string }) => {
 
 // --- Helper Components ---
 
+const LockedFeature = ({ children, isLocked, onUnlock, label, className }: { children: React.ReactNode, isLocked?: boolean, onUnlock?: () => void, label: string, className?: string }) => {
+  if (!isLocked) return <div className={className}>{children}</div>;
+
+  return (
+    <div className={`relative overflow-hidden group ${className || ''}`}>
+      <div className="filter blur-md opacity-40 pointer-events-none select-none transition-all duration-500" aria-hidden="true">
+        {children}
+      </div>
+      <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-900/20 backdrop-blur-[1px]">
+        <div className="bg-slate-900/90 p-5 rounded-2xl border border-indigo-500/40 shadow-2xl flex flex-col items-center text-center max-w-[90%] transform transition-transform hover:scale-105">
+           <div className="p-2.5 bg-indigo-500/20 rounded-full mb-3 ring-1 ring-indigo-500/40">
+             <Lock className="w-5 h-5 text-indigo-400" />
+           </div>
+           <h4 className="text-white font-bold text-sm mb-1">{label} Locked</h4>
+           <p className="text-[10px] text-slate-400 mb-3 max-w-[180px]">
+             Sign in or use your own API key to reveal this premium insight.
+           </p>
+           <button 
+             onClick={onUnlock}
+             className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-all shadow-lg shadow-indigo-500/20 flex items-center gap-2"
+           >
+             Unlock Now <ArrowRight className="w-3 h-3" />
+           </button>
+        </div>
+      </div>
+    </div>
+  )
+};
+
 const StatBox = ({ label, value }: { label: string; value: string }) => (
   <div className="bg-slate-900/50 p-4 rounded-xl border border-white/5 text-center flex flex-col items-center justify-center hover:bg-slate-800 transition-colors">
     <div className="text-[10px] text-slate-500 uppercase font-bold mb-1 tracking-wider">{label}</div>
@@ -227,13 +258,12 @@ const FactorCard = ({ title, factors, icon }: { title: string; factors: FactorAn
             <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1">
                <TrendingUp className="w-3 h-3" /> Bullish Drivers
             </h4>
-            {factors.positive.map((factor, i) => (
+            {factors.positive?.map((factor, i) => (
                <div key={i} className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/10 hover:bg-emerald-500/10 transition-colors">
                   <div className="text-xs font-bold text-emerald-300 mb-1">{factor.title}</div>
                   <p className="text-[10px] text-slate-400 leading-relaxed">{factor.detail}</p>
                </div>
-            ))}
-            {factors.positive.length === 0 && <div className="text-[10px] text-slate-500 italic">None identified</div>}
+            )) || <div className="text-[10px] text-slate-500 italic">None identified</div>}
          </div>
 
          {/* Negative Factors */}
@@ -241,13 +271,12 @@ const FactorCard = ({ title, factors, icon }: { title: string; factors: FactorAn
             <h4 className="text-xs font-bold text-red-400 uppercase tracking-widest flex items-center gap-1">
                <TrendingDown className="w-3 h-3" /> Risk Factors
             </h4>
-             {factors.negative.map((factor, i) => (
+             {factors.negative?.map((factor, i) => (
                <div key={i} className="p-3 rounded-lg bg-red-500/5 border border-red-500/10 hover:bg-red-500/10 transition-colors">
                   <div className="text-xs font-bold text-red-300 mb-1">{factor.title}</div>
                   <p className="text-[10px] text-slate-400 leading-relaxed">{factor.detail}</p>
                </div>
-            ))}
-             {factors.negative.length === 0 && <div className="text-[10px] text-slate-500 italic">None identified</div>}
+            )) || <div className="text-[10px] text-slate-500 italic">None identified</div>}
          </div>
       </div>
     </div>
@@ -631,7 +660,7 @@ const ChatWidget = ({
   );
 };
 
-const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleBookmark }) => {
+const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleBookmark, isTeaserMode = false, onUnlock }) => {
   const [chartTab, setChartTab] = useState<'financials' | 'price' | 'peers'>('price');
   const [finSubTab, setFinSubTab] = useState<'overview' | 'table'>('overview');
   const [feedback, setFeedback] = useState<'yes' | 'no' | null>(null);
@@ -919,9 +948,12 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
       return isNaN(num) ? 0 : num;
     };
 
+    // Safe access to financials
+    const financials = report.financials || [];
+    
     // 1. Prepare Target Data
-    const latest = report.financials[report.financials.length - 1];
-    const prev = report.financials[report.financials.length - 2];
+    const latest = financials.length > 0 ? financials[financials.length - 1] : null;
+    const prev = financials.length > 1 ? financials[financials.length - 2] : null;
     
     let targetGrowth = 0;
     if (latest && prev && prev.revenue) {
@@ -947,8 +979,9 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
       isTarget: true
     };
 
-    // 2. Prepare Peer Data
-    const peersData = report.peers.map(p => ({
+    // 2. Prepare Peer Data (Safe Map)
+    const peers = report.peers || [];
+    const peersData = peers.map(p => ({
       ticker: p.ticker,
       name: p.name,
       marketCap: p.marketCap,
@@ -967,18 +1000,19 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
     // Calculate Averages for Quadrants
     const validPe = all.filter(d => d.peVal > 0);
     const avgPe = validPe.length > 0 ? validPe.reduce((acc, curr) => acc + curr.peVal, 0) / validPe.length : 0;
-    const avgGrowth = all.reduce((acc, curr) => acc + curr.growthVal, 0) / all.length;
-    const avgMargin = all.reduce((acc, curr) => acc + curr.marginVal, 0) / all.length;
+    const avgGrowth = all.length > 0 ? all.reduce((acc, curr) => acc + curr.growthVal, 0) / all.length : 0;
+    const avgMargin = all.length > 0 ? all.reduce((acc, curr) => acc + curr.marginVal, 0) / all.length : 0;
 
     // Find Max for bars
-    const maxGrowth = Math.max(...all.map(d => Math.abs(d.growthVal)));
-    const maxMargin = Math.max(...all.map(d => Math.abs(d.marginVal)));
+    const maxGrowth = all.length > 0 ? Math.max(...all.map(d => Math.abs(d.growthVal))) : 0;
+    const maxMargin = all.length > 0 ? Math.max(...all.map(d => Math.abs(d.marginVal))) : 0;
 
     return { all, avgPe, avgGrowth, avgMargin, maxGrowth, maxMargin };
   }, [report]);
 
-  // KPIs
-  const latestFin = report.financials[report.financials.length - 1];
+  // KPIs (Safe Access)
+  const financials = report.financials || [];
+  const latestFin = financials.length > 0 ? financials[financials.length - 1] : null;
   const grossMargin = latestFin?.revenue ? ((latestFin.grossProfit / latestFin.revenue) * 100).toFixed(1) + '%' : 'N/A';
   const netMargin = latestFin?.revenue ? ((latestFin.netIncome / latestFin.revenue) * 100).toFixed(1) + '%' : 'N/A';
   const debtToEquity = latestFin?.shareholderEquity ? (latestFin.totalDebt / latestFin.shareholderEquity).toFixed(2) : 'N/A';
@@ -1047,8 +1081,8 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
         
         {/* A. Verdict Card (Standalone) */}
-        <div className={`xl:col-span-2 bg-surface p-6 rounded-2xl border border-white/5 relative overflow-hidden group flex flex-col items-center justify-center`}>
-             <div className="relative z-10 flex flex-col items-center text-center">
+        <LockedFeature isLocked={isTeaserMode} onUnlock={onUnlock} label="Analyst Verdict" className="xl:col-span-2 bg-surface rounded-2xl border border-white/5 relative overflow-hidden flex flex-col items-center justify-center">
+             <div className="p-6 relative z-10 flex flex-col items-center text-center w-full h-48 justify-center">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
                    <Target className="w-4 h-4" />
                    Verdict
@@ -1061,13 +1095,13 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                   AI Rating
                 </div>
              </div>
-        </div>
+        </LockedFeature>
 
         {/* B. Intelligence Panel (Moonshot + Health) */}
-        <div className="xl:col-span-5 bg-surface rounded-2xl border border-white/5 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-white/5 relative">
+        <LockedFeature isLocked={isTeaserMode} onUnlock={onUnlock} label="Alpha Intelligence" className="xl:col-span-5 bg-surface rounded-2xl border border-white/5 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-white/5 relative overflow-hidden">
             {/* Moonshot Score */}
             <div 
-              className="p-6 relative group z-10 hover:z-20 flex flex-col items-center text-center justify-start rounded-t-2xl md:rounded-tr-none md:rounded-l-2xl"
+              className="p-6 relative group z-10 hover:z-20 flex flex-col items-center text-center justify-start rounded-t-2xl md:rounded-tr-none md:rounded-l-2xl h-48"
             >
                 <div className={`absolute inset-0 opacity-5 bg-gradient-to-br ${scoreBg} to-transparent group-hover:opacity-10 transition-opacity rounded-t-2xl md:rounded-tr-none md:rounded-l-2xl`}></div>
                 <div className="relative z-10 w-full flex flex-col items-center">
@@ -1090,7 +1124,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
             </div>
 
             {/* Financial Health */}
-            <div className="p-6 relative group z-10 hover:z-20 flex flex-col items-center text-center justify-start rounded-b-2xl md:rounded-bl-none md:rounded-r-2xl">
+            <div className="p-6 relative group z-10 hover:z-20 flex flex-col items-center text-center justify-start rounded-b-2xl md:rounded-bl-none md:rounded-r-2xl h-48">
                 <div className={`absolute inset-0 opacity-5 bg-gradient-to-br ${healthBg} to-transparent group-hover:opacity-10 transition-opacity rounded-b-2xl md:rounded-bl-none md:rounded-r-2xl`}></div>
                 <div className="relative z-10 w-full flex flex-col items-center">
                     <div className="relative flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500 mb-2 cursor-help group/tooltip">
@@ -1110,12 +1144,12 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                     <ExpandableText text={report.financialHealthReason || 'Based on balance sheet strength.'} />
                 </div>
             </div>
-        </div>
+        </LockedFeature>
 
         {/* C. Valuation Panel (Price + Target) */}
         <div className="xl:col-span-5 bg-surface rounded-2xl border border-white/5 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-white/5">
             {/* Current Price */}
-            <div className="p-6 relative group hover:bg-slate-800/30 transition-colors flex flex-col items-center text-center justify-center">
+            <div className="p-6 relative group hover:bg-slate-800/30 transition-colors flex flex-col items-center text-center justify-center h-48">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
                    <DollarSign className="w-4 h-4" />
                    Current Price
@@ -1128,8 +1162,8 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                 </div>
             </div>
 
-            {/* Target Price */}
-            <div className="p-6 relative group hover:bg-slate-800/30 transition-colors flex flex-col items-center text-center justify-center">
+            {/* Target Price - LOCKED IN TEASER */}
+            <LockedFeature isLocked={isTeaserMode} onUnlock={onUnlock} label="Price Targets" className="relative group hover:bg-slate-800/30 transition-colors flex flex-col items-center text-center justify-center h-48 p-6">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
                    <Goal className="w-4 h-4" />
                    1Y Target Price
@@ -1192,14 +1226,14 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                       Range: {report.priceTargetRange}
                    </div>
                 )}
-            </div>
+            </LockedFeature>
         </div>
 
       </div>
 
-      {/* NEW: Thesis Evolution / Change Log */}
+      {/* NEW: Thesis Evolution / Change Log - LOCKED IN TEASER */}
       {report.history && (
-        <div className="bg-surface rounded-2xl p-6 border border-white/5 shadow-lg relative overflow-hidden">
+        <LockedFeature isLocked={isTeaserMode} onUnlock={onUnlock} label="Thesis Evolution" className="bg-surface rounded-2xl p-6 border border-white/5 shadow-lg relative overflow-hidden">
            <div className="flex flex-col md:flex-row items-center gap-6">
               {/* Verdict Flow Visual */}
               <div className="flex items-center gap-4 bg-slate-900/50 p-4 rounded-xl border border-white/5 w-full md:w-auto justify-center">
@@ -1232,12 +1266,12 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                  </ul>
               </div>
            </div>
-        </div>
+        </LockedFeature>
       )}
 
-      {/* NEW: Scenario Analysis Section (REFINED VISUAL) */}
+      {/* NEW: Scenario Analysis Section (REFINED VISUAL) - LOCKED IN TEASER */}
       {report.scenarioAnalysis && scenarioData && (
-        <div className="bg-surface rounded-2xl p-6 border border-white/5">
+        <LockedFeature isLocked={isTeaserMode} onUnlock={onUnlock} label="Scenario Modeling" className="bg-surface rounded-2xl p-6 border border-white/5">
            <h3 className="font-display font-bold text-lg text-white mb-6 flex items-center gap-2">
                <BarChart className="w-5 h-5 text-indigo-400" />
                1-Year Scenario Analysis (Bear vs. Bull)
@@ -1368,7 +1402,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                  </p>
               </div>
            </div>
-        </div>
+        </LockedFeature>
       )}
 
       {/* 3. Detailed Stats Grid (REFACTORED: 3-Panel Dashboard) */}
@@ -1428,8 +1462,8 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
          </div>
       </div>
       
-      {/* 4. SMART MONEY & RISK PROFILE */}
-      <div className="bg-surface rounded-2xl p-6 border border-white/5 shadow-lg">
+      {/* 4. SMART MONEY & RISK PROFILE - LOCKED IN TEASER */}
+      <LockedFeature isLocked={isTeaserMode} onUnlock={onUnlock} label="Institutional Data" className="bg-surface rounded-2xl p-6 border border-white/5 shadow-lg">
          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-white/5">
             <div className="bg-indigo-600/20 p-2 rounded-lg border border-indigo-500/30">
                <Briefcase className="w-5 h-5 text-indigo-400" />
@@ -1503,10 +1537,10 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                )}
             </div>
          </div>
-      </div>
+      </LockedFeature>
 
-      {/* 5. QUALITATIVE ANALYSIS: MOAT & MANAGEMENT */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* 5. QUALITATIVE ANALYSIS: MOAT & MANAGEMENT - LOCKED IN TEASER */}
+      <LockedFeature isLocked={isTeaserMode} onUnlock={onUnlock} label="Qualitative Analysis" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {report.moatAnalysis && (
            <div className="bg-surface rounded-2xl p-6 border border-white/5 shadow-lg flex flex-col h-full">
               {/* MOAT CONTENT */}
@@ -1582,10 +1616,10 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
               </div>
            </div>
         )}
-      </div>
+      </LockedFeature>
 
-      {/* 6. Factor Analysis (Side by Side) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* 6. Factor Analysis (Side by Side) - LOCKED IN TEASER */}
+      <LockedFeature isLocked={isTeaserMode} onUnlock={onUnlock} label="Factor Analysis" className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <FactorCard 
           title="Short-Term Outlook (1-6 Mo)" 
           factors={report.shortTermFactors} 
@@ -1596,7 +1630,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
           factors={report.longTermFactors} 
           icon={<Target className="w-5 h-5 text-purple-400" />}
         />
-      </div>
+      </LockedFeature>
 
       {/* 7. Main Analysis Area (Tabs) */}
       <div className="bg-surface rounded-2xl border border-white/5 flex flex-col overflow-hidden min-h-[500px]">
@@ -1740,7 +1774,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                       <div className="bg-slate-800/50 rounded-xl p-4 border border-white/5">
                          <h4 className="text-sm font-bold text-slate-400 mb-4 flex items-center gap-2"><PieChart className="w-4 h-4" /> Profitability Trends</h4>
                          <ResponsiveContainer width="100%" height="85%">
-                            <ReBarChart data={report.financials}>
+                            <ReBarChart data={financials}>
                                <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                                <XAxis dataKey="year" stroke="#94a3b8" fontSize={10} />
                                <YAxis stroke="#94a3b8" fontSize={10} />
@@ -1757,7 +1791,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                       <div className="bg-slate-800/50 rounded-xl p-4 border border-white/5">
                          <h4 className="text-sm font-bold text-slate-400 mb-4 flex items-center gap-2"><DollarSign className="w-4 h-4" /> Cash Flow Efficiency</h4>
                          <ResponsiveContainer width="100%" height="85%">
-                            <AreaChart data={report.financials}>
+                            <AreaChart data={financials}>
                                <defs>
                                   <linearGradient id="cfGradient" x1="0" y1="0" x2="0" y2="1">
                                     <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
@@ -1788,15 +1822,15 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                              <thead className="bg-slate-900/50 text-slate-400 font-mono text-xs uppercase">
                                 <tr>
                                    <th className="px-4 py-3">Metric (Billions)</th>
-                                   {report.financials.map(f => <th key={f.year} className="px-4 py-3">{f.year}</th>)}
+                                   {financials.map(f => <th key={f.year} className="px-4 py-3">{f.year}</th>)}
                                 </tr>
                              </thead>
                              <tbody className="divide-y divide-white/5 text-slate-300">
-                                <tr><td className="px-4 py-3 font-medium text-white">Revenue</td>{report.financials.map(f => <td key={f.year} className="px-4 py-3">{f.revenue}</td>)}</tr>
-                                <tr><td className="px-4 py-3">Gross Profit</td>{report.financials.map(f => <td key={f.year} className="px-4 py-3">{f.grossProfit}</td>)}</tr>
-                                <tr><td className="px-4 py-3">Operating Income</td>{report.financials.map(f => <td key={f.year} className="px-4 py-3">{f.operatingIncome}</td>)}</tr>
-                                <tr><td className="px-4 py-3 font-medium text-white">Net Income</td>{report.financials.map(f => <td key={f.year} className="px-4 py-3">{f.netIncome}</td>)}</tr>
-                                <tr><td className="px-4 py-3 text-slate-400">EPS</td>{report.financials.map(f => <td key={f.year} className="px-4 py-3">{f.eps}</td>)}</tr>
+                                <tr><td className="px-4 py-3 font-medium text-white">Revenue</td>{financials.map(f => <td key={f.year} className="px-4 py-3">{f.revenue}</td>)}</tr>
+                                <tr><td className="px-4 py-3">Gross Profit</td>{financials.map(f => <td key={f.year} className="px-4 py-3">{f.grossProfit}</td>)}</tr>
+                                <tr><td className="px-4 py-3">Operating Income</td>{financials.map(f => <td key={f.year} className="px-4 py-3">{f.operatingIncome}</td>)}</tr>
+                                <tr><td className="px-4 py-3 font-medium text-white">Net Income</td>{financials.map(f => <td key={f.year} className="px-4 py-3">{f.netIncome}</td>)}</tr>
+                                <tr><td className="px-4 py-3 text-slate-400">EPS</td>{financials.map(f => <td key={f.year} className="px-4 py-3">{f.eps}</td>)}</tr>
                              </tbody>
                           </table>
                        </div>
@@ -1812,13 +1846,13 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                              <thead className="bg-slate-900/50 text-slate-400 font-mono text-xs uppercase">
                                 <tr>
                                    <th className="px-4 py-3">Metric (Billions)</th>
-                                   {report.financials.map(f => <th key={f.year} className="px-4 py-3">{f.year}</th>)}
+                                   {financials.map(f => <th key={f.year} className="px-4 py-3">{f.year}</th>)}
                                 </tr>
                              </thead>
                              <tbody className="divide-y divide-white/5 text-slate-300">
-                                <tr><td className="px-4 py-3 font-medium text-white">Cash & Equivalents</td>{report.financials.map(f => <td key={f.year} className="px-4 py-3">{f.cashAndEquivalents}</td>)}</tr>
-                                <tr><td className="px-4 py-3">Total Debt</td>{report.financials.map(f => <td key={f.year} className="px-4 py-3">{f.totalDebt}</td>)}</tr>
-                                <tr><td className="px-4 py-3">Shareholder Equity</td>{report.financials.map(f => <td key={f.year} className="px-4 py-3">{f.shareholderEquity}</td>)}</tr>
+                                <tr><td className="px-4 py-3 font-medium text-white">Cash & Equivalents</td>{financials.map(f => <td key={f.year} className="px-4 py-3">{f.cashAndEquivalents}</td>)}</tr>
+                                <tr><td className="px-4 py-3">Total Debt</td>{financials.map(f => <td key={f.year} className="px-4 py-3">{f.totalDebt}</td>)}</tr>
+                                <tr><td className="px-4 py-3">Shareholder Equity</td>{financials.map(f => <td key={f.year} className="px-4 py-3">{f.shareholderEquity}</td>)}</tr>
                              </tbody>
                           </table>
                        </div>
@@ -1834,13 +1868,13 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                              <thead className="bg-slate-900/50 text-slate-400 font-mono text-xs uppercase">
                                 <tr>
                                    <th className="px-4 py-3">Metric (Billions)</th>
-                                   {report.financials.map(f => <th key={f.year} className="px-4 py-3">{f.year}</th>)}
+                                   {financials.map(f => <th key={f.year} className="px-4 py-3">{f.year}</th>)}
                                 </tr>
                              </thead>
                              <tbody className="divide-y divide-white/5 text-slate-300">
-                                <tr><td className="px-4 py-3 font-medium text-white">Operating Cash Flow</td>{report.financials.map(f => <td key={f.year} className="px-4 py-3">{f.operatingCashFlow}</td>)}</tr>
-                                <tr><td className="px-4 py-3">Capital Expenditure</td>{report.financials.map(f => <td key={f.year} className="px-4 py-3 text-red-400">({f.capitalExpenditure})</td>)}</tr>
-                                <tr className="bg-slate-800/30"><td className="px-4 py-3 font-medium text-emerald-400">Free Cash Flow</td>{report.financials.map(f => <td key={f.year} className="px-4 py-3 font-mono text-emerald-400 font-bold">{f.freeCashFlow}</td>)}</tr>
+                                <tr><td className="px-4 py-3 font-medium text-white">Operating Cash Flow</td>{financials.map(f => <td key={f.year} className="px-4 py-3">{f.operatingCashFlow}</td>)}</tr>
+                                <tr><td className="px-4 py-3">Capital Expenditure</td>{financials.map(f => <td key={f.year} className="px-4 py-3 text-red-400">({f.capitalExpenditure})</td>)}</tr>
+                                <tr className="bg-slate-800/30"><td className="px-4 py-3 font-medium text-emerald-400">Free Cash Flow</td>{financials.map(f => <td key={f.year} className="px-4 py-3 font-mono text-emerald-400 font-bold">{f.freeCashFlow}</td>)}</tr>
                              </tbody>
                           </table>
                        </div>
@@ -2016,7 +2050,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                                             <div className="w-24 h-1.5 bg-slate-700/50 rounded-full overflow-hidden relative">
                                                 <div 
                                                     className={`absolute top-0 bottom-0 left-0 rounded-full ${peer.growthVal > 0 ? 'bg-emerald-500' : 'bg-red-500'}`} 
-                                                    style={{ width: `${Math.min(100, Math.max(5, (Math.abs(peer.growthVal) / peerAnalysis.maxGrowth) * 100))}%` }}
+                                                    style={{ width: `${Math.min(100, Math.max(5, (Math.abs(peer.growthVal) / (peerAnalysis.maxGrowth || 1)) * 100))}%` }}
                                                 ></div>
                                             </div>
                                         </div>
@@ -2028,7 +2062,6 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                                             </span>
                                             {/* Margin Bar (Handling Negative) */}
                                             <div className="w-24 h-1.5 bg-slate-700/50 rounded-full overflow-hidden flex relative">
-                                                {/* Fixed: minMargin does not exist on peerAnalysis type, removed unused property usage */}
                                                 <div 
                                                     className={`absolute top-0 bottom-0 left-0 rounded-full ${peer.marginVal > 0 ? 'bg-indigo-500' : 'bg-amber-500'}`} 
                                                     style={{ width: `${Math.min(100, Math.max(5, (Math.abs(peer.marginVal) / (peerAnalysis.maxMargin || 1)) * 100))}%` }}
@@ -2157,8 +2190,8 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
          </div>
       </div>
 
-      {/* 9. Detailed Analyst Conclusion */}
-      <div className="bg-surface rounded-2xl p-8 border border-white/5 relative overflow-hidden">
+      {/* 9. Detailed Analyst Conclusion - LOCKED IN TEASER */}
+      <LockedFeature isLocked={isTeaserMode} onUnlock={onUnlock} label="Detailed Conclusion" className="bg-surface rounded-2xl p-8 border border-white/5 relative overflow-hidden">
         <div className="absolute top-0 right-0 p-3 opacity-10">
            <Rocket className="w-32 h-32" />
         </div>
@@ -2189,10 +2222,10 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
               </div>
            </div>
         </div>
-      </div>
+      </LockedFeature>
 
-      {/* 10. Combined Analyst Notebook (Thesis + Notes) */}
-      <div className="bg-surface rounded-2xl border border-white/5 shadow-lg overflow-hidden group print:hidden" data-html2canvas-ignore>
+      {/* 10. Combined Analyst Notebook (Thesis + Notes) - LOCKED IN TEASER */}
+      <LockedFeature isLocked={isTeaserMode} onUnlock={onUnlock} label="Analyst Notebook" className="bg-surface rounded-2xl border border-white/5 shadow-lg overflow-hidden group print:hidden" data-html2canvas-ignore>
         <button 
           onClick={() => setIsNotebookOpen(!isNotebookOpen)}
           className="w-full flex items-center justify-between p-6 bg-slate-800/30 hover:bg-slate-800/50 transition-colors"
@@ -2257,7 +2290,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                )}
             </div>
         </div>
-      </div>
+      </LockedFeature>
 
       {/* 11. Sources Section (REFACTORED: Collapsible Accordion) */}
       {report.sources && report.sources.length > 0 && (
@@ -2327,13 +2360,16 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
       </div>
       
       {/* 13. Floating AI Chat Trigger - MOVED TO PORTAL WIDGET BELOW */}
-      <ChatWidget 
-         report={report}
-         userNotes={notes}
-         userThesis={thesis}
-         isOpen={isChatOpen}
-         onToggle={() => setIsChatOpen(!isChatOpen)}
-      />
+      {/* ONLY RENDER IF NOT IN TEASER MODE */}
+      {!isTeaserMode && (
+         <ChatWidget 
+            report={report}
+            userNotes={notes}
+            userThesis={thesis}
+            isOpen={isChatOpen}
+            onToggle={() => setIsChatOpen(!isChatOpen)}
+         />
+      )}
 
     </div>
   );
