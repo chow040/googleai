@@ -4,7 +4,7 @@ import Header from './components/Header';
 import ReportCard, { ReportCardSkeleton } from './components/ReportCard';
 import Dashboard from './components/Dashboard';
 import AuthModal from './components/AuthModal';
-import SettingsModal from './components/SettingsModal';
+import AccountSettingsPage from './components/AccountSettingsPage';
 import LandingPage from './components/LandingPage';
 import { generateEquityReport } from './services/geminiService';
 import { EquityReport, LoadingState, SavedReportItem, UserProfile, AnalysisSession } from './types';
@@ -311,7 +311,8 @@ function App() {
   const [ticker, setTicker] = useState('');
   
   // View State (Replaces LoadingState for layout control)
-  const [viewMode, setViewMode] = useState<'LANDING' | 'DASHBOARD' | 'REPORT'>('LANDING');
+  // Added SETTINGS view mode
+  const [viewMode, setViewMode] = useState<'LANDING' | 'DASHBOARD' | 'REPORT' | 'SETTINGS'>('LANDING');
   
   // Current active report to display
   const [report, setReport] = useState<EquityReport | null>(null);
@@ -327,7 +328,6 @@ function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMessage, setAuthModalMessage] = useState<string>(''); // Dynamic message for auth modal
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   
   // Guest Usage Tracking
   const [guestUsageCount, setGuestUsageCount] = useState(0);
@@ -362,6 +362,13 @@ function App() {
       setGuestUsageCount(parseInt(usage, 10));
     }
   }, []);
+
+  // FORCE REDIRECT: If user is logged in but on LANDING page, move to dashboard
+  useEffect(() => {
+    if (user && viewMode === 'LANDING') {
+      setViewMode('DASHBOARD');
+    }
+  }, [user, viewMode]);
 
   useEffect(() => {
     localStorage.setItem('ultramagnus_library_v1', JSON.stringify(reportLibrary));
@@ -535,8 +542,8 @@ function App() {
 
   // Smart Navigation (Logo Click)
   const handleHome = () => {
-    // If viewing a report, go back to Dashboard to search again
-    if (viewMode === 'REPORT') {
+    // If viewing a report or settings, go back to Dashboard
+    if (viewMode === 'REPORT' || viewMode === 'SETTINGS') {
       setViewMode('DASHBOARD');
       setReport(null);
       setTicker('');
@@ -598,19 +605,38 @@ function App() {
       tier: 'Pro', // Simulate upgrade on login
       joinDate: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
     };
-    setUser(newUser);
     localStorage.setItem('ultramagnus_user', JSON.stringify(newUser));
+    setUser(newUser);
+    // Explicitly set view mode to ensure transition from Landing to Dashboard
+    setViewMode('DASHBOARD');
   };
 
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('ultramagnus_user');
+    // Always return to landing on logout
+    setViewMode('LANDING');
+  };
+
+  const handleUpdateUser = (updatedUser: UserProfile) => {
+     setUser(updatedUser);
+     localStorage.setItem('ultramagnus_user', JSON.stringify(updatedUser));
   };
   
   const handleOpenAuth = () => {
      setAuthModalMessage('Unlock full access to Ultramagnus.'); // Reset message
      setIsAuthModalOpen(true);
   }
+
+  // Navigation to Settings Page
+  const handleOpenSettings = () => {
+     if (user) {
+        setViewMode('SETTINGS');
+     } else {
+        setAuthModalMessage("Please sign in to configure account settings.");
+        setIsAuthModalOpen(true);
+     }
+  };
 
   const currentReportInLibrary = report ? reportLibrary.find(w => w.ticker === report.ticker) : undefined;
   const isBookmarked = currentReportInLibrary?.isBookmarked || false;
@@ -646,6 +672,14 @@ function App() {
            onViewDemo={handleViewSample} 
            onLogin={handleOpenAuth}
         />
+      ) : viewMode === 'SETTINGS' && user ? (
+         <div className="relative z-10">
+            <AccountSettingsPage 
+               user={user} 
+               onUpdateUser={handleUpdateUser} 
+               onBack={() => setViewMode('DASHBOARD')}
+            />
+         </div>
       ) : (
         <div className="relative z-10">
           <Header 
@@ -654,7 +688,7 @@ function App() {
             user={user}
             onLogin={handleOpenAuth}
             onLogout={handleLogout}
-            onOpenSettings={() => setIsSettingsModalOpen(true)}
+            onOpenSettings={handleOpenSettings}
           />
           
           <main className={`container mx-auto px-4 max-w-6xl transition-all duration-500 ease-in-out ${viewMode === 'DASHBOARD' ? 'pt-8' : 'pt-6'}`}>
@@ -695,18 +729,12 @@ function App() {
         </div>
       )}
 
-      {/* Modals */}
+      {/* Auth Modal */}
       <AuthModal 
         isOpen={isAuthModalOpen} 
         onClose={() => setIsAuthModalOpen(false)}
         onLogin={handleLogin}
         message={authModalMessage}
-      />
-      
-      <SettingsModal 
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-        user={user}
       />
 
     </div>
