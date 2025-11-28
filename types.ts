@@ -24,6 +24,11 @@ export interface PricePoint {
   price: number;
 }
 
+export interface AnalystTarget {
+  month: string;
+  averageTarget: number;
+}
+
 export interface FactorItem {
   title: string;
   detail: string;
@@ -108,6 +113,14 @@ export interface MoatAnalysis {
   rationale: string;
 }
 
+export interface ManagementAnalysis {
+  executiveTenure: string; // e.g. "CEO 15y, CFO 3y"
+  insiderOwnership: string; // e.g. "12.5%"
+  trackRecord: string; // e.g. "Previous exit to Google for $2B"
+  governanceRedFlags: string; // e.g. "Clean audit history" or "Dual class structure concerns"
+  verdict: string; // 1-2 line summary
+}
+
 export interface CatalystEvent {
   date: string;
   event: string;
@@ -155,6 +168,9 @@ export interface EquityReport {
   
   // Value Add: Moat Analysis
   moatAnalysis?: MoatAnalysis;
+  
+  // Value Add: Management Quality
+  managementQuality?: ManagementAnalysis;
 
   // Value Add: Thesis Evolution
   history?: AnalysisHistory;
@@ -165,6 +181,7 @@ export interface EquityReport {
   
   financials: FinancialYear[];
   priceHistory: PricePoint[];
+  analystPriceTargets?: AnalystTarget[]; // New Field for Historical Targets
   peers: PeerComparison[];
   
   // Refined Events

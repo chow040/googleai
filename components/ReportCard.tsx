@@ -51,11 +51,10 @@ import {
   FolderCheck,
   MessageSquare,
   Send,
-  Maximize2,
   Minimize2,
-  Trash2,
   RefreshCw,
-  BookOpen
+  BookOpen,
+  UserCheck
 } from 'lucide-react';
 import {
   BarChart as ReBarChart,
@@ -72,7 +71,8 @@ import {
   Area,
   Cell,
   Scatter,
-  ScatterChart
+  ScatterChart,
+  ReferenceLine
 } from 'recharts';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -890,6 +890,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
     if (!report.priceHistory || report.priceHistory.length === 0) return [];
     
     const data = report.priceHistory;
+    const targets = report.analystPriceTargets || []; // New data
     const totalPoints = data.length;
     const shortTermStart = Math.max(0, totalPoints - 6);
 
@@ -899,42 +900,82 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
     return data.map((point, index) => {
       const ltPoint = longTermTrend.find(p => p.index === index);
       const stPoint = shortTermTrend.find(p => p.index === index);
+      // Find matching target for the month
+      const targetPoint = targets.find(t => t.month === point.month);
+      
       return {
         ...point,
         longTermTrend: ltPoint ? ltPoint.value : null,
-        shortTermTrend: stPoint ? stPoint.value : null
+        shortTermTrend: stPoint ? stPoint.value : null,
+        analystTarget: targetPoint ? targetPoint.averageTarget : null
       };
     });
-  }, [report.priceHistory]);
+  }, [report.priceHistory, report.analystPriceTargets]);
 
-  const peerChartData = useMemo(() => {
-    const parseValue = (val: string) => {
+  const peerAnalysis = useMemo(() => {
+    const parseValue = (val: string | undefined) => {
+      if (!val) return 0;
       const num = parseFloat(val.replace(/[^0-9.-]/g, ''));
       return isNaN(num) ? 0 : num;
     };
 
-    const targetPeer = {
-      name: report.ticker,
-      pe: parseValue(report.peRatio),
-      margin: 0, // Need to calc from financials
-      isTarget: true
-    };
-    
-    // Calculate current net margin for target
+    // 1. Prepare Target Data
     const latest = report.financials[report.financials.length - 1];
+    const prev = report.financials[report.financials.length - 2];
+    
+    let targetGrowth = 0;
+    if (latest && prev && prev.revenue) {
+      targetGrowth = ((latest.revenue - prev.revenue) / prev.revenue) * 100;
+    }
+    
+    let targetMargin = 0;
     if (latest && latest.revenue) {
-      targetPeer.margin = (latest.netIncome / latest.revenue) * 100;
+      targetMargin = (latest.netIncome / latest.revenue) * 100;
     }
 
-    const peers = report.peers.map(p => ({
-      name: p.ticker,
-      pe: parseValue(p.peRatio),
-      margin: parseValue(p.netMargin),
+    const targetData = {
+      ticker: report.ticker,
+      name: report.companyName,
+      marketCap: report.marketCap,
+      marketCapVal: parseValue(report.marketCap) * (report.marketCap.includes('T') ? 1000 : 1), // Simple weight for sorting
+      peRatio: report.peRatio,
+      peVal: parseValue(report.peRatio),
+      revenueGrowth: targetGrowth.toFixed(1) + '%',
+      growthVal: targetGrowth,
+      netMargin: targetMargin.toFixed(1) + '%',
+      marginVal: targetMargin,
+      isTarget: true
+    };
+
+    // 2. Prepare Peer Data
+    const peersData = report.peers.map(p => ({
+      ticker: p.ticker,
+      name: p.name,
+      marketCap: p.marketCap,
+      marketCapVal: parseValue(p.marketCap) * (p.marketCap.includes('T') ? 1000 : 1),
+      peRatio: p.peRatio,
+      peVal: parseValue(p.peRatio),
+      revenueGrowth: p.revenueGrowth,
+      growthVal: parseValue(p.revenueGrowth),
+      netMargin: p.netMargin,
+      marginVal: parseValue(p.netMargin),
       isTarget: false
     }));
 
-    return [targetPeer, ...peers];
-  }, [report.peers, report.financials, report.peRatio, report.ticker]);
+    const all = [targetData, ...peersData].sort((a, b) => b.marketCapVal - a.marketCapVal);
+    
+    // Calculate Averages for Quadrants
+    const validPe = all.filter(d => d.peVal > 0);
+    const avgPe = validPe.length > 0 ? validPe.reduce((acc, curr) => acc + curr.peVal, 0) / validPe.length : 0;
+    const avgGrowth = all.reduce((acc, curr) => acc + curr.growthVal, 0) / all.length;
+    const avgMargin = all.reduce((acc, curr) => acc + curr.marginVal, 0) / all.length;
+
+    // Find Max for bars
+    const maxGrowth = Math.max(...all.map(d => Math.abs(d.growthVal)));
+    const maxMargin = Math.max(...all.map(d => Math.abs(d.marginVal)));
+
+    return { all, avgPe, avgGrowth, avgMargin, maxGrowth, maxMargin };
+  }, [report]);
 
   // KPIs
   const latestFin = report.financials[report.financials.length - 1];
@@ -1058,7 +1099,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                       {/* Custom Tooltip */}
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-800 border border-white/10 shadow-xl rounded-lg text-center opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
                          <p className="text-[10px] normal-case font-medium text-slate-300 leading-relaxed">
-                           Solvency and liquidity score (0-100) based on debt levels, cash runway, and current ratio.
+                           Solvency and liquidity score (0-100) based on balance sheet strength.
                          </p>
                          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800"></div>
                       </div>
@@ -1464,38 +1505,84 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
          </div>
       </div>
 
-      {/* 5. MOAT ANALYSIS (Full Width - Above Factors) */}
-      {report.moatAnalysis && (
-         <div className="bg-surface rounded-2xl p-6 border border-white/5 shadow-lg">
-            <div className="flex items-center gap-3 mb-4 pb-4 border-b border-white/5">
-               <div className="bg-slate-900 p-2 rounded-lg border border-white/5 shadow-inner">
-                  <Castle className="w-5 h-5 text-amber-400" />
-               </div>
-               <h3 className="font-display font-bold text-lg text-white">Economic Moat</h3>
-               <div className={`ml-auto px-2 py-1 rounded text-xs font-bold uppercase tracking-wider border ${
-                  report.moatAnalysis.moatRating === 'Wide' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                  report.moatAnalysis.moatRating === 'Narrow' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
-                  'bg-slate-500/10 text-slate-400 border-slate-500/20'
-               }`}>
-                  {report.moatAnalysis.moatRating} Moat
-               </div>
-            </div>
-            <div className="flex flex-col md:flex-row gap-6 mt-4 md:mt-0">
-               <div className="md:w-1/3">
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Primary Source</div>
-                  <div className="text-sm font-bold text-white bg-slate-900/50 p-3 rounded-lg border border-white/5">
-                     {report.moatAnalysis.moatSource}
-                  </div>
-               </div>
-               <div className="flex-1">
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Strategic Rationale</div>
-                  <p className="text-sm text-slate-300 leading-relaxed p-3 rounded-lg bg-slate-900/20 border border-transparent">
-                     {report.moatAnalysis.rationale}
-                  </p>
-               </div>
-            </div>
-         </div>
-      )}
+      {/* 5. QUALITATIVE ANALYSIS: MOAT & MANAGEMENT */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {report.moatAnalysis && (
+           <div className="bg-surface rounded-2xl p-6 border border-white/5 shadow-lg flex flex-col h-full">
+              {/* MOAT CONTENT */}
+              <div className="flex items-center gap-3 mb-4 pb-4 border-b border-white/5">
+                 <div className="bg-slate-900 p-2 rounded-lg border border-white/5 shadow-inner">
+                    <Castle className="w-5 h-5 text-amber-400" />
+                 </div>
+                 <h3 className="font-display font-bold text-lg text-white">Economic Moat</h3>
+                 <div className={`ml-auto px-2 py-1 rounded text-xs font-bold uppercase tracking-wider border ${
+                    report.moatAnalysis.moatRating === 'Wide' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                    report.moatAnalysis.moatRating === 'Narrow' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
+                    'bg-slate-500/10 text-slate-400 border-slate-500/20'
+                 }`}>
+                    {report.moatAnalysis.moatRating} Moat
+                 </div>
+              </div>
+              <div className="flex-1 space-y-4">
+                 <div>
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Primary Source</div>
+                    <div className="text-sm font-bold text-white bg-slate-900/50 p-3 rounded-lg border border-white/5">
+                       {report.moatAnalysis.moatSource}
+                    </div>
+                 </div>
+                 <div>
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Strategic Rationale</div>
+                    <p className="text-sm text-slate-300 leading-relaxed p-3 rounded-lg bg-slate-900/20 border border-transparent">
+                       {report.moatAnalysis.rationale}
+                    </p>
+                 </div>
+              </div>
+           </div>
+        )}
+
+        {report.managementQuality && (
+           <div className="bg-surface rounded-2xl p-6 border border-white/5 shadow-lg flex flex-col h-full">
+              <div className="flex items-center gap-3 mb-4 pb-4 border-b border-white/5">
+                 <div className="bg-slate-900 p-2 rounded-lg border border-white/5 shadow-inner">
+                    <UserCheck className="w-5 h-5 text-indigo-400" />
+                 </div>
+                 <h3 className="font-display font-bold text-lg text-white">Management & Governance</h3>
+              </div>
+              
+              <div className="flex-1 space-y-4">
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-slate-900/50 p-3 rounded-lg border border-white/5">
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Tenure</div>
+                        <div className="text-sm font-medium text-white leading-snug">{report.managementQuality.executiveTenure}</div>
+                    </div>
+                    <div className="bg-slate-900/50 p-3 rounded-lg border border-white/5">
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Insider Own</div>
+                        <div className="text-sm font-medium text-white leading-snug">{report.managementQuality.insiderOwnership}</div>
+                    </div>
+                 </div>
+
+                 <div>
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Track Record</div>
+                    <div className="text-xs text-slate-300 leading-relaxed bg-slate-900/20 p-2 rounded border border-white/5">{report.managementQuality.trackRecord}</div>
+                 </div>
+
+                 <div>
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+                         <AlertTriangle className="w-3 h-3 text-amber-500/80" /> Governance Check
+                    </div>
+                    <div className="text-xs text-slate-300 leading-relaxed bg-slate-900/20 p-2 rounded border border-white/5">{report.managementQuality.governanceRedFlags}</div>
+                 </div>
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-white/5">
+                 <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Analyst Verdict</div>
+                 <p className="text-sm font-bold text-white italic border-l-2 border-indigo-500 pl-3">
+                    "{report.managementQuality.verdict}"
+                 </p>
+              </div>
+           </div>
+        )}
+      </div>
 
       {/* 6. Factor Analysis (Side by Side) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1595,6 +1682,17 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                         name="Long-Term Trend"
                         animationDuration={1500}
                         animationBegin={600}
+                      />
+                      <Line 
+                        type="step" 
+                        dataKey="analystTarget" 
+                        stroke="#d946ef" 
+                        strokeWidth={2} 
+                        strokeDasharray="3 3" 
+                        dot={{ r: 3, fill: '#d946ef', strokeWidth: 1 }}
+                        name="Avg Analyst Target"
+                        animationDuration={1500}
+                        animationBegin={900}
                       />
                    </ComposedChart>
                  </ResponsiveContainer>
@@ -1754,50 +1852,196 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
 
           {/* PEERS TAB */}
           {chartTab === 'peers' && (
-            <div className="p-6 animate-fade-in space-y-6">
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[350px]">
-                  {/* Valuation Scatter Chart */}
-                  <div className="bg-slate-800/50 rounded-xl p-4 border border-white/5">
-                     <h4 className="text-sm font-bold text-slate-400 mb-4">Valuation vs. Profitability</h4>
-                     <ResponsiveContainer width="100%" height="85%">
-                        <ScatterChart margin={{ top: 20, right: 20, bottom: 40, left: 0 }}>
-                           <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                           <XAxis type="number" dataKey="pe" name="P/E Ratio" stroke="#94a3b8" label={{ value: 'P/E Ratio', position: 'bottom', fill: '#64748b', fontSize: 10, offset: 0 }} fontSize={10} />
-                           <YAxis type="number" dataKey="margin" name="Net Margin %" stroke="#94a3b8" label={{ value: 'Net Margin %', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 10 }} fontSize={10} />
-                           <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155' }} />
-                           <Legend verticalAlign="top" height={36} iconSize={8} wrapperStyle={{ fontSize: '11px', paddingBottom: '10px' }} />
-                           <Scatter name="Competitors" data={peerChartData.filter(d => !d.isTarget)} fill="#94a3b8" shape="circle" />
-                           <Scatter name={report.ticker} data={peerChartData.filter(d => d.isTarget)} fill="#6366f1" shape="star" r={8} />
-                        </ScatterChart>
-                     </ResponsiveContainer>
-                  </div>
-                  
-                  {/* Peer Table */}
-                  <div className="bg-slate-800/50 rounded-xl border border-white/5 overflow-hidden flex flex-col">
+            <div className="p-6 animate-fade-in space-y-8">
+                
+                {/* 1. Competitive Matrix (Chart) */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-2 bg-slate-800/50 rounded-xl p-4 border border-white/5 h-[400px]">
+                        <div className="flex justify-between items-center mb-4">
+                             <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                                <Activity className="w-4 h-4 text-indigo-400" /> 
+                                Competitive Matrix: Valuation vs. Growth
+                             </h4>
+                             <div className="flex gap-4 text-[10px] text-slate-400">
+                                <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-indigo-500"></div> {report.ticker}</span>
+                                <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-slate-500"></div> Peers</span>
+                             </div>
+                        </div>
+                        <ResponsiveContainer width="100%" height="85%">
+                            <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
+                                <XAxis 
+                                    type="number" 
+                                    dataKey="peVal" 
+                                    name="P/E Ratio" 
+                                    stroke="#94a3b8" 
+                                    label={{ value: 'Valuation (P/E Ratio)', position: 'bottom', fill: '#64748b', fontSize: 10, offset: 0 }} 
+                                    fontSize={10} 
+                                    domain={['auto', 'auto']}
+                                />
+                                <YAxis 
+                                    type="number" 
+                                    dataKey="growthVal" 
+                                    name="Revenue Growth %" 
+                                    stroke="#94a3b8" 
+                                    label={{ value: 'Revenue Growth %', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 10 }} 
+                                    fontSize={10} 
+                                />
+                                <Tooltip 
+                                    cursor={{ strokeDasharray: '3 3' }}
+                                    content={({ active, payload }) => {
+                                        if (active && payload && payload.length) {
+                                            const data = payload[0].payload;
+                                            return (
+                                                <div className="bg-slate-900 border border-white/10 p-3 rounded-lg shadow-xl z-50">
+                                                    <div className="font-bold text-white mb-1 flex items-center gap-2">
+                                                      {data.isTarget && <span className="w-2 h-2 rounded-full bg-indigo-500"></span>}
+                                                      {data.ticker}
+                                                    </div>
+                                                    <div className="text-xs text-slate-400">{data.name}</div>
+                                                    <div className="my-2 border-t border-white/10"></div>
+                                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                                                        <span className="text-slate-500">P/E Ratio:</span>
+                                                        <span className="text-white font-mono text-right">{data.peRatio}</span>
+                                                        <span className="text-slate-500">Growth:</span>
+                                                        <span className={`font-mono text-right ${data.growthVal >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{data.revenueGrowth}</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    }}
+                                />
+                                {/* Quadrant Lines */}
+                                <ReferenceLine x={peerAnalysis.avgPe} stroke="#fbbf24" strokeDasharray="3 3" opacity={0.5} label={{ value: "Avg P/E", position: 'insideTopRight', fill: '#fbbf24', fontSize: 10 }} />
+                                <ReferenceLine y={peerAnalysis.avgGrowth} stroke="#fbbf24" strokeDasharray="3 3" opacity={0.5} label={{ value: "Avg Growth", position: 'insideTopRight', fill: '#fbbf24', fontSize: 10 }} />
+                                
+                                <Scatter name="Companies" data={peerAnalysis.all}>
+                                    {peerAnalysis.all.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.isTarget ? '#6366f1' : '#94a3b8'} />
+                                    ))}
+                                </Scatter>
+                            </ScatterChart>
+                        </ResponsiveContainer>
+                    </div>
+
+                    {/* Matrix Insights / Legend */}
+                    <div className="bg-slate-800/30 rounded-xl p-6 border border-white/5 flex flex-col justify-center space-y-6">
+                        <div>
+                            <h5 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Understanding the Matrix</h5>
+                            <div className="space-y-3">
+                                <div className="flex gap-3">
+                                    <div className="p-2 bg-emerald-500/10 rounded border border-emerald-500/20 h-fit">
+                                        <TrendingUp className="w-4 h-4 text-emerald-400" />
+                                    </div>
+                                    <div>
+                                        <div className="text-xs font-bold text-emerald-400">High Growth, Low P/E</div>
+                                        <div className="text-[10px] text-slate-400 leading-tight mt-0.5">Potentially undervalued relative to growth. The "Sweet Spot".</div>
+                                    </div>
+                                </div>
+                                <div className="flex gap-3">
+                                    <div className="p-2 bg-indigo-500/10 rounded border border-indigo-500/20 h-fit">
+                                        <Zap className="w-4 h-4 text-indigo-400" />
+                                    </div>
+                                    <div>
+                                        <div className="text-xs font-bold text-indigo-400">High Growth, High P/E</div>
+                                        <div className="text-[10px] text-slate-400 leading-tight mt-0.5">Momentum stocks with high expectations priced in.</div>
+                                    </div>
+                                </div>
+                                <div className="flex gap-3">
+                                    <div className="p-2 bg-slate-700/30 rounded border border-white/5 h-fit">
+                                        <ShieldCheck className="w-4 h-4 text-slate-400" />
+                                    </div>
+                                    <div>
+                                        <div className="text-xs font-bold text-slate-300">Low Growth, Low P/E</div>
+                                        <div className="text-[10px] text-slate-500 leading-tight mt-0.5">Mature "Value" stocks or distressed assets.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. Industry Leaderboard (Table) */}
+                <div className="bg-slate-800/30 rounded-xl border border-white/10 overflow-hidden">
+                     <div className="px-6 py-4 bg-slate-900/50 border-b border-white/5 flex justify-between items-center">
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                            <Users className="w-4 h-4 text-indigo-400" /> Industry Peer Comparison
+                        </h4>
+                        <div className="text-[10px] text-slate-500 hidden md:block">Sorted by Market Cap</div>
+                     </div>
                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left">
-                           <thead className="bg-slate-800 text-slate-400 font-mono text-xs uppercase">
+                        <table className="w-full text-sm text-left border-collapse">
+                           <thead className="bg-slate-900/80 text-slate-400 font-mono text-[10px] uppercase tracking-wider">
                               <tr>
-                                 <th className="px-4 py-3">Ticker</th>
-                                 <th className="px-4 py-3">Mkt Cap</th>
-                                 <th className="px-4 py-3">P/E</th>
-                                 <th className="px-4 py-3">Growth</th>
+                                 <th className="px-6 py-4 font-bold">Company</th>
+                                 <th className="px-6 py-4 font-bold text-right">Market Cap</th>
+                                 <th className="px-6 py-4 font-bold text-right">P/E Ratio</th>
+                                 <th className="px-6 py-4 font-bold text-right w-1/5">Revenue Growth</th>
+                                 <th className="px-6 py-4 font-bold text-right w-1/5">Net Margin</th>
                               </tr>
                            </thead>
                            <tbody className="divide-y divide-white/5 text-slate-300">
-                              {peerChartData.map((peer, i) => (
-                                 <tr key={i} className={peer.isTarget ? "bg-indigo-500/10 border-l-2 border-indigo-500" : ""}>
-                                    <td className="px-4 py-3 font-bold text-white">{peer.name}</td>
-                                    <td className="px-4 py-3">{peer.isTarget ? report.marketCap : report.peers.find(p => p.ticker === peer.name)?.marketCap}</td>
-                                    <td className="px-4 py-3">{peer.pe || 'N/A'}</td>
-                                    <td className="px-4 py-3">{peer.isTarget ? 'N/A' : report.peers.find(p => p.ticker === peer.name)?.revenueGrowth}</td>
+                              {peerAnalysis.all.map((peer, i) => (
+                                 <tr 
+                                     key={i} 
+                                     className={`group transition-colors ${peer.isTarget ? 'bg-indigo-500/10 hover:bg-indigo-500/20' : 'hover:bg-slate-800/50'}`}
+                                 >
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold ${peer.isTarget ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-slate-700 text-slate-300'}`}>
+                                                {peer.ticker.substring(0, 2)}
+                                            </div>
+                                            <div>
+                                                <div className={`font-bold ${peer.isTarget ? 'text-indigo-300' : 'text-white'}`}>{peer.ticker}</div>
+                                                <div className="text-[10px] text-slate-500 truncate max-w-[120px] md:max-w-[200px]">{peer.name}</div>
+                                            </div>
+                                            {peer.isTarget && <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-500 text-white uppercase">You</span>}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-right font-mono text-slate-300">
+                                        {peer.marketCap}
+                                    </td>
+                                    <td className="px-6 py-4 text-right">
+                                        <div className="inline-block px-2 py-1 rounded bg-slate-800 border border-white/5 font-mono text-xs">
+                                            {peer.peRatio}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-right">
+                                        <div className="flex flex-col items-end gap-1">
+                                            <span className={`font-mono font-bold ${peer.growthVal > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                {peer.revenueGrowth}
+                                            </span>
+                                            {/* Growth Bar */}
+                                            <div className="w-24 h-1.5 bg-slate-700/50 rounded-full overflow-hidden relative">
+                                                <div 
+                                                    className={`absolute top-0 bottom-0 left-0 rounded-full ${peer.growthVal > 0 ? 'bg-emerald-500' : 'bg-red-500'}`} 
+                                                    style={{ width: `${Math.min(100, Math.max(5, (Math.abs(peer.growthVal) / peerAnalysis.maxGrowth) * 100))}%` }}
+                                                ></div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-right">
+                                        <div className="flex flex-col items-end gap-1">
+                                            <span className={`font-mono font-bold ${peer.marginVal > 0 ? 'text-indigo-400' : 'text-amber-400'}`}>
+                                                {peer.netMargin}
+                                            </span>
+                                            {/* Margin Bar (Handling Negative) */}
+                                            <div className="w-24 h-1.5 bg-slate-700/50 rounded-full overflow-hidden flex relative">
+                                                {/* Fixed: minMargin does not exist on peerAnalysis type, removed unused property usage */}
+                                                <div 
+                                                    className={`absolute top-0 bottom-0 left-0 rounded-full ${peer.marginVal > 0 ? 'bg-indigo-500' : 'bg-amber-500'}`} 
+                                                    style={{ width: `${Math.min(100, Math.max(5, (Math.abs(peer.marginVal) / (peerAnalysis.maxMargin || 1)) * 100))}%` }}
+                                                ></div>
+                                            </div>
+                                        </div>
+                                    </td>
                                  </tr>
                               ))}
                            </tbody>
                         </table>
                      </div>
-                  </div>
-               </div>
+                </div>
             </div>
           )}
 
@@ -1834,10 +2078,10 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
             </div>
          </div>
 
-         {/* News & Earnings Grid */}
+         {/* News & Earnings Grid (Refactored to match request) */}
          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Recent Headlines */}
-            <div className="bg-surface rounded-2xl p-6 border border-white/5 shadow-lg flex flex-col">
+            <div className="bg-surface rounded-2xl p-6 border border-white/5 shadow-lg flex flex-col h-full">
                <h3 className="text-lg font-display font-bold text-white mb-4 flex items-center gap-2">
                   <Newspaper className="w-5 h-5 text-indigo-400" />
                   Recent Headlines
@@ -1852,10 +2096,11 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                </div>
             </div>
 
-            {/* Earnings & Events Stack */}
-            <div className="flex flex-col gap-6">
-               {/* Earnings Analysis */}
-               <div className="bg-surface rounded-2xl p-6 border border-white/5 shadow-lg flex-1">
+            {/* Earnings & Catalysts Stack (UNIFIED CARD) */}
+            <div className="bg-surface rounded-2xl p-6 border border-white/5 shadow-lg flex flex-col h-full">
+               
+               {/* 1. Earnings Section */}
+               <div className="mb-6 pb-6 border-b border-white/5">
                   <div className="flex items-center justify-between mb-4">
                      <h3 className="text-lg font-display font-bold text-white flex items-center gap-2">
                         <PhoneCall className="w-5 h-5 text-emerald-400" />
@@ -1884,8 +2129,8 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
                   </div>
                </div>
                
-               {/* Upcoming Events (Catalysts) */}
-               <div className="bg-surface rounded-2xl p-6 border border-white/5 shadow-lg">
+               {/* 2. Catalyst Section */}
+               <div className="flex-1">
                   <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                      <Zap className="w-4 h-4" />
                      Catalyst Calendar

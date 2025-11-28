@@ -42,6 +42,13 @@ const SAMPLE_REPORT: EquityReport = {
     moatSource: "Intangible Assets (Patents)",
     rationale: "Exclusive orbital mining rights and patented plasma propulsion create high barriers to entry, though technology is unproven at scale."
   },
+  managementQuality: {
+    executiveTenure: "CEO 8y, CFO 4y",
+    insiderOwnership: "12.5%",
+    trackRecord: "Founder previously sold deep-tech startup to Google for $200M.",
+    governanceRedFlags: "Dual-class share structure gives CEO super-voting rights.",
+    verdict: "Founder-led, high insider ownership aligned with shareholders, though governance is centralized."
+  },
   history: {
     previousDate: "Aug 2024",
     previousVerdict: "HOLD",
@@ -214,6 +221,20 @@ const SAMPLE_REPORT: EquityReport = {
     { month: "Aug", price: 22.50 },
     { month: "Sep", price: 23.80 },
     { month: "Oct", price: 24.50 }
+  ],
+  analystPriceTargets: [
+    { month: "Nov", averageTarget: 18.00 },
+    { month: "Dec", averageTarget: 18.50 },
+    { month: "Jan", averageTarget: 19.00 },
+    { month: "Feb", averageTarget: 19.00 },
+    { month: "Mar", averageTarget: 22.00 },
+    { month: "Apr", averageTarget: 25.00 },
+    { month: "May", averageTarget: 26.00 },
+    { month: "Jun", averageTarget: 26.00 },
+    { month: "Jul", averageTarget: 28.00 },
+    { month: "Aug", averageTarget: 30.00 },
+    { month: "Sep", averageTarget: 32.00 },
+    { month: "Oct", averageTarget: 35.00 }
   ],
   valuation: "Currently speculative. Trading purely on future IP value rather than earnings. Comparable to early-stage biotech.",
   verdict: "BUY",

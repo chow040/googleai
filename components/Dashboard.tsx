@@ -1,4 +1,3 @@
-
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { SavedReportItem, UserProfile, AnalysisSession, EquityReport } from '../types';
 import { 
@@ -42,17 +41,19 @@ interface DashboardProps {
   onCancelAnalysis: (id: string) => void;
 }
 
-// Unified Card Component for Grid
-const LibraryCard = ({
-  session,
-  savedItem,
-  onClick,
-  onAction
-}: {
+interface LibraryCardProps {
   session?: AnalysisSession;
   savedItem?: SavedReportItem;
   onClick: () => void;
   onAction: (e: React.MouseEvent) => void;
+}
+
+// Unified Card Component for Grid
+const LibraryCard: React.FC<LibraryCardProps> = ({
+  session,
+  savedItem,
+  onClick,
+  onAction
 }) => {
   const isSession = !!session;
   const status = session ? session.status : 'SAVED';
@@ -272,7 +273,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     .sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))
     .slice(0, 5)
     .map(item => {
-      const diff = Date.now() - (item.addedAt || Date.now());
+      const diff = Date.now() - (item.addedAt || 0);
       const mins = Math.floor(diff / 60000);
       const hrs = Math.floor(mins / 60);
       const days = Math.floor(hrs / 24);
@@ -422,7 +423,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                           key={session.id} 
                           session={session} 
                           onClick={() => session.status === 'READY' && onViewAnalyzedReport(session.id)}
-                          onAction={() => onCancelAnalysis(session.id)}
+                          onAction={(e) => { e.stopPropagation(); onCancelAnalysis(session.id); }}
                        />
                     ))}
 
