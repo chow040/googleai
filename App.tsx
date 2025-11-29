@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard';
 import AuthModal from './components/AuthModal';
 import AccountSettingsPage from './components/AccountSettingsPage';
 import LandingPage from './components/LandingPage';
+
 import { generateEquityReport } from './services/geminiService';
 import { EquityReport, LoadingState, SavedReportItem, UserProfile, AnalysisSession } from './types';
 import { Search, Loader2, Sparkles, Eye, TrendingUp, TrendingDown, Minus, Bookmark, X, ArrowRight, Database, ExternalLink } from 'lucide-react';
@@ -56,30 +57,30 @@ const SAMPLE_REPORT: EquityReport = {
     previousDate: "Aug 2024",
     previousVerdict: "HOLD",
     changeRationale: [
-       "Successful Series D funding removed near-term liquidity risk",
-       "NASA partnership validated technical feasibility"
+      "Successful Series D funding removed near-term liquidity risk",
+      "NASA partnership validated technical feasibility"
     ]
   },
   shortTermFactors: {
     positive: [
-       { title: "Upcoming Prototype Launch", detail: "Scheduled launch of 'Prospector-1' next month acts as a major catalyst for validation." },
-       { title: "Strategic Defense Partnership", detail: "Recently secured data-sharing agreement with the DoD boosts technical credibility and non-dilutive funding." }
+      { title: "Upcoming Prototype Launch", detail: "Scheduled launch of 'Prospector-1' next month acts as a major catalyst for validation." },
+      { title: "Strategic Defense Partnership", detail: "Recently secured data-sharing agreement with the DoD boosts technical credibility and non-dilutive funding." }
     ],
     negative: [
-       { title: "High Cash Burn", detail: "Monthly burn rate of $15M puts pressure on balance sheet liquidity." },
-       { title: "Volatility Risk", detail: "Stock price heavily correlated with binary test outcomes." }
+      { title: "High Cash Burn", detail: "Monthly burn rate of $15M puts pressure on balance sheet liquidity." },
+      { title: "Volatility Risk", detail: "Stock price heavily correlated with binary test outcomes." }
     ]
   },
   longTermFactors: {
     positive: [
-       { title: "Exclusive Orbital Rights", detail: "Secured mining rights to high-value Near-Earth Objects (NEOs) with estimated $2T value." },
-       { title: "Patented Propulsion Tech", detail: "Proprietary plasma drive reduces fuel costs by 40%, enabling cheaper retrieval missions." },
-       { title: "Path to Profitability", detail: "Projected break-even by 2027 assuming current rare earth metal prices hold." }
+      { title: "Exclusive Orbital Rights", detail: "Secured mining rights to high-value Near-Earth Objects (NEOs) with estimated $2T value." },
+      { title: "Patented Propulsion Tech", detail: "Proprietary plasma drive reduces fuel costs by 40%, enabling cheaper retrieval missions." },
+      { title: "Path to Profitability", detail: "Projected break-even by 2027 assuming current rare earth metal prices hold." }
     ],
     negative: [
-       { title: "Regulatory Uncertainty", detail: "International space property rights remain legally ambiguous under current treaties." },
-       { title: "Operational Timeline Risk", detail: "Deep space operations historically face multi-year delays." },
-       { title: "Emerging Competition", detail: "SpaceX and Blue Origin signaling potential entry into resource extraction sector." }
+      { title: "Regulatory Uncertainty", detail: "International space property rights remain legally ambiguous under current treaties." },
+      { title: "Operational Timeline Risk", detail: "Deep space operations historically face multi-year delays." },
+      { title: "Emerging Competition", detail: "SpaceX and Blue Origin signaling potential entry into resource extraction sector." }
     ]
   },
   upcomingEvents: [
@@ -154,57 +155,57 @@ const SAMPLE_REPORT: EquityReport = {
     }
   ],
   financials: [
-    { 
-      year: "2021", 
-      revenue: 12.5, 
-      grossProfit: 2.1, 
-      operatingIncome: -10.5, 
-      netIncome: -15.5, 
+    {
+      year: "2021",
+      revenue: 12.5,
+      grossProfit: 2.1,
+      operatingIncome: -10.5,
+      netIncome: -15.5,
       eps: -0.45,
-      cashAndEquivalents: 150, 
-      totalDebt: 45, 
+      cashAndEquivalents: 150,
+      totalDebt: 45,
       shareholderEquity: 80,
       operatingCashFlow: -12.0,
       capitalExpenditure: 5.0,
       freeCashFlow: -17.0
     },
-    { 
-      year: "2022", 
-      revenue: 28.0, 
-      grossProfit: 8.4, 
-      operatingIncome: -35.0, 
-      netIncome: -42.8, 
+    {
+      year: "2022",
+      revenue: 28.0,
+      grossProfit: 8.4,
+      operatingIncome: -35.0,
+      netIncome: -42.8,
       eps: -0.98,
-      cashAndEquivalents: 110, 
-      totalDebt: 80, 
+      cashAndEquivalents: 110,
+      totalDebt: 80,
       shareholderEquity: 45,
       operatingCashFlow: -30.5,
       capitalExpenditure: 15.0,
       freeCashFlow: -45.5
     },
-    { 
-      year: "2023", 
-      revenue: 65.5, 
-      grossProfit: 22.5, 
-      operatingIncome: -60.2, 
-      netIncome: -85.2, 
+    {
+      year: "2023",
+      revenue: 65.5,
+      grossProfit: 22.5,
+      operatingIncome: -60.2,
+      netIncome: -85.2,
       eps: -1.55,
       cashAndEquivalents: 450, // Post Series C
-      totalDebt: 120, 
+      totalDebt: 120,
       shareholderEquity: 320,
       operatingCashFlow: -65.0,
       capitalExpenditure: 45.0,
       freeCashFlow: -110.0
     },
-    { 
-      year: "2024", 
-      revenue: 145.0, 
-      grossProfit: 65.0, 
-      operatingIncome: -45.0, 
-      netIncome: -60.5, 
+    {
+      year: "2024",
+      revenue: 145.0,
+      grossProfit: 65.0,
+      operatingIncome: -45.0,
+      netIncome: -60.5,
       eps: -1.05,
       cashAndEquivalents: 850, // Post Series D
-      totalDebt: 150, 
+      totalDebt: 150,
       shareholderEquity: 680,
       operatingCashFlow: -25.0,
       capitalExpenditure: 85.0,
@@ -309,28 +310,28 @@ const ANALYSIS_PHASES = [
 
 function App() {
   const [ticker, setTicker] = useState('');
-  
+
   // View State
   const [viewMode, setViewMode] = useState<'LANDING' | 'DASHBOARD' | 'REPORT' | 'SETTINGS'>('LANDING');
-  
+
   // Demo Modal State
   const [showDemoModal, setShowDemoModal] = useState(false);
 
   // Current active report to display
   const [report, setReport] = useState<EquityReport | null>(null);
-  
+
   // Background Analysis Sessions
   const [analysisSessions, setAnalysisSessions] = useState<AnalysisSession[]>([]);
 
   // Autocomplete state
-  const [suggestions, setSuggestions] = useState<{symbol: string, name: string}[]>([]);
+  const [suggestions, setSuggestions] = useState<{ symbol: string, name: string }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   // User & Auth State
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMessage, setAuthModalMessage] = useState<string>(''); // Dynamic message for auth modal
-  
+
   // Guest Usage Tracking
   const [guestUsageCount, setGuestUsageCount] = useState(0);
 
@@ -339,7 +340,7 @@ function App() {
     // Attempt to load new library format
     const saved = localStorage.getItem('ultramagnus_library_v1');
     if (saved) return JSON.parse(saved);
-    
+
     // Fallback: Migrate legacy saved reports
     const legacy = localStorage.getItem('ultramagnus_saved_reports');
     if (legacy) {
@@ -358,7 +359,7 @@ function App() {
     if (savedUser) {
       setUser(JSON.parse(savedUser));
     }
-    
+
     const usage = localStorage.getItem('ultramagnus_guest_usage');
     if (usage) {
       setGuestUsageCount(parseInt(usage, 10));
@@ -389,15 +390,15 @@ function App() {
           // Logistic curve simulation: Fast at start, slow at end
           const current = session.progress;
           let next = current;
-          
+
           if (current < 30) next += 2;
           else if (current < 60) next += 1;
           else if (current < 85) next += 0.5;
           else if (current < 95) next += 0.1;
-          
+
           // Map progress to phase text
           const phaseIndex = Math.min(
-            Math.floor((next / 100) * ANALYSIS_PHASES.length), 
+            Math.floor((next / 100) * ANALYSIS_PHASES.length),
             ANALYSIS_PHASES.length - 1
           );
 
@@ -416,11 +417,11 @@ function App() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.toUpperCase();
     setTicker(value);
-    
+
     if (value.length > 0) {
-      const filtered = POPULAR_STOCKS.filter(stock => 
-        stock.symbol.startsWith(value) || 
-        stock.symbol.includes(value) || 
+      const filtered = POPULAR_STOCKS.filter(stock =>
+        stock.symbol.startsWith(value) ||
+        stock.symbol.includes(value) ||
         stock.name.toUpperCase().includes(value)
       ).slice(0, 6);
       setSuggestions(filtered);
@@ -455,7 +456,7 @@ function App() {
 
     // Prevent duplicate active analysis for the same ticker
     if (analysisSessions.some(s => s.ticker === targetTicker && s.status === 'PROCESSING')) {
-        return; 
+      return;
     }
 
     const newSession: AnalysisSession = {
@@ -470,7 +471,7 @@ function App() {
 
     try {
       const data = await generateEquityReport(targetTicker);
-      
+
       // COMPLETE ANALYSIS
       setAnalysisSessions(prev => prev.map(s => {
         if (s.id !== sessionId) return s;
@@ -500,7 +501,7 @@ function App() {
         const filtered = prev.filter(i => i.ticker !== newItem.ticker);
         return [newItem, ...filtered];
       });
-      
+
       // Track usage (legacy counter, kept for potential future use)
       const customKey = localStorage.getItem('ultramagnus_user_api_key');
       if (!user && !customKey) {
@@ -574,16 +575,16 @@ function App() {
   const toggleBookmarkReport = (item: SavedReportItem) => {
     // If we are in demo mode (on landing page), clicking bookmark should prompt login
     if (showDemoModal && !user) {
-       handleOpenAuth();
-       return;
+      handleOpenAuth();
+      return;
     }
 
     setReportLibrary(prev => {
       const existing = prev.find(i => i.ticker === item.ticker);
       if (existing) {
         // Update existing item's bookmark status
-        return prev.map(i => i.ticker === item.ticker 
-          ? { ...i, isBookmarked: !i.isBookmarked } 
+        return prev.map(i => i.ticker === item.ticker
+          ? { ...i, isBookmarked: !i.isBookmarked }
           : i
         );
       } else {
@@ -598,7 +599,7 @@ function App() {
     e.stopPropagation();
     setReportLibrary(reportLibrary.filter(item => item.ticker !== tickerToRemove));
   };
-  
+
   const loadReport = (item: SavedReportItem) => {
     if (item.fullReport) {
       setReport(item.fullReport);
@@ -633,23 +634,23 @@ function App() {
   };
 
   const handleUpdateUser = (updatedUser: UserProfile) => {
-     setUser(updatedUser);
-     localStorage.setItem('ultramagnus_user', JSON.stringify(updatedUser));
+    setUser(updatedUser);
+    localStorage.setItem('ultramagnus_user', JSON.stringify(updatedUser));
   };
-  
+
   const handleOpenAuth = () => {
-     setAuthModalMessage('Unlock full access to Ultramagnus.'); // Reset message
-     setIsAuthModalOpen(true);
+    setAuthModalMessage('Unlock full access to Ultramagnus.'); // Reset message
+    setIsAuthModalOpen(true);
   }
 
   // Navigation to Settings Page
   const handleOpenSettings = () => {
-     if (user) {
-        setViewMode('SETTINGS');
-     } else {
-        setAuthModalMessage("Please sign in to configure account settings.");
-        setIsAuthModalOpen(true);
-     }
+    if (user) {
+      setViewMode('SETTINGS');
+    } else {
+      setAuthModalMessage("Please sign in to configure account settings.");
+      setIsAuthModalOpen(true);
+    }
   };
 
   const currentReportInLibrary = report ? reportLibrary.find(w => w.ticker === report.ticker) : undefined;
@@ -664,51 +665,53 @@ function App() {
 
   return (
     <div className="min-h-screen font-sans bg-slate-950 text-slate-200 relative overflow-hidden pb-20 selection:bg-indigo-500/30">
-      
+
       {/* PROFESSIONAL BACKGROUND EFFECTS (Shared across Landing and Dashboard) */}
       <div className="fixed inset-0 z-0 pointer-events-none">
         <div className="absolute inset-0 bg-slate-950"></div>
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1400px] h-[800px] bg-gradient-to-b from-indigo-900/10 via-slate-900/50 to-slate-950 opacity-70"></div>
-        <div className="absolute inset-0 opacity-[0.03]" 
-             style={{
-               backgroundImage: `linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)`,
-               backgroundSize: '60px 60px',
-               maskImage: 'radial-gradient(circle at 50% 0%, black, transparent 80%)'
-             }}>
+        <div className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage: `linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)`,
+            backgroundSize: '60px 60px',
+            maskImage: 'radial-gradient(circle at 50% 0%, black, transparent 80%)'
+          }}>
         </div>
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-cyan-900/5 blur-[120px] mix-blend-screen"></div>
         <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-indigo-900/5 blur-[120px] mix-blend-screen"></div>
       </div>
 
       {viewMode === 'LANDING' ? (
-        <LandingPage 
-           onStartAnalysis={() => setViewMode('DASHBOARD')}
-           onViewDemo={handleViewSample} 
-           onLogin={handleOpenAuth}
+        <LandingPage
+          onStartAnalysis={() => setViewMode('DASHBOARD')}
+          onViewDemo={handleViewSample}
+          onLogin={handleOpenAuth}
         />
       ) : viewMode === 'SETTINGS' && user ? (
-         <div className="relative z-10">
-            <AccountSettingsPage 
-               user={user} 
-               onUpdateUser={handleUpdateUser} 
-               onBack={() => setViewMode('DASHBOARD')}
-            />
-         </div>
+        <div className="relative z-10">
+          <AccountSettingsPage
+            user={user}
+            onUpdateUser={handleUpdateUser}
+            onBack={() => setViewMode('DASHBOARD')}
+          />
+        </div>
       ) : (
         <div className="relative z-10">
-          <Header 
-            onHome={handleHome} 
-            savedCount={reportLibrary.filter(r => r.isBookmarked).length} 
+          <Header
+            onHome={handleHome}
+            savedCount={reportLibrary.filter(r => r.isBookmarked).length}
             user={user}
             onLogin={handleOpenAuth}
             onLogout={handleLogout}
             onOpenSettings={handleOpenSettings}
           />
-          
-          <main className={`container mx-auto px-4 max-w-6xl transition-all duration-500 ease-in-out ${viewMode === 'DASHBOARD' ? 'pt-8' : 'pt-6'}`}>
-            
+
+
+
+          <main className={`container mx-auto px-4 max-w-6xl transition-all duration-500 ease-in-out ${viewMode === 'DASHBOARD' ? 'pt-4' : 'pt-6'}`}>
+
             {viewMode === 'DASHBOARD' ? (
-              <Dashboard 
+              <Dashboard
                 user={displayUser}
                 reportLibrary={reportLibrary}
                 onSearch={handleSearch}
@@ -728,8 +731,8 @@ function App() {
             ) : (
               <div className="min-h-[400px]">
                 {report && (
-                  <ReportCard 
-                    report={report} 
+                  <ReportCard
+                    report={report}
                     isBookmarked={isBookmarked}
                     onToggleBookmark={toggleBookmarkReport}
                     isTeaserMode={isTeaserMode}
@@ -746,73 +749,73 @@ function App() {
       {/* DEMO REPORT POP-UP MODAL */}
       {showDemoModal && report && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-           {/* Backdrop */}
-           <div 
-             className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm transition-opacity"
-             onClick={handleCloseDemoModal}
-           ></div>
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm transition-opacity"
+            onClick={handleCloseDemoModal}
+          ></div>
 
-           {/* Modal Content */}
-           <div className="relative w-full max-w-7xl max-h-[90vh] bg-slate-900 rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col animate-fade-in-up">
-              
-              {/* Modal Header */}
-              <div className="flex items-center justify-between px-6 py-4 bg-slate-900 border-b border-white/10 shrink-0">
-                 <div className="flex items-center gap-3">
-                    <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
-                       <Eye className="w-3.5 h-3.5" /> Preview Mode
-                    </span>
-                    <h3 className="text-white font-bold">Ultramagnus Demo Report</h3>
-                 </div>
-                 <div className="flex items-center gap-4">
-                     {!user && (
-                        <button 
-                           onClick={handleOpenAuth}
-                           className="hidden sm:flex text-xs font-bold text-slate-300 hover:text-white transition-colors"
-                        >
-                           Create Free Account
-                        </button>
-                     )}
-                     <button 
-                        onClick={handleCloseDemoModal}
-                        className="p-2 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all border border-white/5"
-                     >
-                        <X className="w-5 h-5" />
-                     </button>
-                 </div>
-              </div>
+          {/* Modal Content */}
+          <div className="relative w-full max-w-7xl max-h-[90vh] bg-slate-900 rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col animate-fade-in-up">
 
-              {/* Scrollable Report Body */}
-              <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950 p-4 md:p-8">
-                 <div className="max-w-6xl mx-auto">
-                    <ReportCard 
-                      report={report} 
-                      isBookmarked={false} // Demo doesn't show bookmarked state
-                      onToggleBookmark={toggleBookmarkReport} // Leads to auth
-                      isTeaserMode={false} // Unlock everything for demo
-                      onUnlock={() => {}} // No-op
-                    />
-                 </div>
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 bg-slate-900 border-b border-white/10 shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                  <Eye className="w-3.5 h-3.5" /> Preview Mode
+                </span>
+                <h3 className="text-white font-bold">Ultramagnus Demo Report</h3>
               </div>
-              
-              {/* Footer CTA (Sticky) */}
-              {!user && (
-                 <div className="p-4 bg-gradient-to-r from-indigo-900/90 to-purple-900/90 border-t border-white/10 flex flex-col sm:flex-row items-center justify-center gap-4 text-center shrink-0">
-                    <p className="text-sm text-indigo-100 font-medium">Ready to analyze real stocks with this depth?</p>
-                    <button 
-                       onClick={handleOpenAuth}
-                       className="px-6 py-2 bg-white text-indigo-900 font-bold rounded-lg hover:bg-indigo-50 transition-colors shadow-lg text-sm flex items-center gap-2"
-                    >
-                       Get Started for Free <ArrowRight className="w-4 h-4" />
-                    </button>
-                 </div>
-              )}
-           </div>
+              <div className="flex items-center gap-4">
+                {!user && (
+                  <button
+                    onClick={handleOpenAuth}
+                    className="hidden sm:flex text-xs font-bold text-slate-300 hover:text-white transition-colors"
+                  >
+                    Create Free Account
+                  </button>
+                )}
+                <button
+                  onClick={handleCloseDemoModal}
+                  className="p-2 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all border border-white/5"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable Report Body */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950 p-4 md:p-8">
+              <div className="max-w-6xl mx-auto">
+                <ReportCard
+                  report={report}
+                  isBookmarked={false} // Demo doesn't show bookmarked state
+                  onToggleBookmark={toggleBookmarkReport} // Leads to auth
+                  isTeaserMode={false} // Unlock everything for demo
+                  onUnlock={() => { }} // No-op
+                />
+              </div>
+            </div>
+
+            {/* Footer CTA (Sticky) */}
+            {!user && (
+              <div className="p-4 bg-gradient-to-r from-indigo-900/90 to-purple-900/90 border-t border-white/10 flex flex-col sm:flex-row items-center justify-center gap-4 text-center shrink-0">
+                <p className="text-sm text-indigo-100 font-medium">Ready to analyze real stocks with this depth?</p>
+                <button
+                  onClick={handleOpenAuth}
+                  className="px-6 py-2 bg-white text-indigo-900 font-bold rounded-lg hover:bg-indigo-50 transition-colors shadow-lg text-sm flex items-center gap-2"
+                >
+                  Get Started for Free <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {/* Auth Modal */}
-      <AuthModal 
-        isOpen={isAuthModalOpen} 
+      <AuthModal
+        isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         onLogin={handleLogin}
         message={authModalMessage}

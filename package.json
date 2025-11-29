@@ -9,13 +9,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/genai": "^1.30.0",
+    "@supabase/supabase-js": "^2.86.0",
+    "html2canvas": "1.4.1",
+    "jspdf": "2.5.1",
+    "lucide-react": "^0.554.0",
+    "pg": "^8.16.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "@google/genai": "^1.30.0",
-    "lucide-react": "^0.554.0",
-    "recharts": "^3.4.1",
-    "html2canvas": "1.4.1",
-    "jspdf": "2.5.1"
+    "recharts": "^3.4.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
