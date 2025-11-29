@@ -503,9 +503,12 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   // Filter Logic
   const filteredLibrary = useMemo(() => {
-      let items = reportLibrary.filter(item => 
-        !analysisSessions.some(session => session.ticker === item.ticker)
-      );
+      // Logic: Only hide library items that have active sessions IF we are in the ALL view (where sessions are shown)
+      // Otherwise (in filtered views like BOOKMARKED), we want to show the library items because sessions aren't displayed there.
+      
+      let items = filter === 'ALL'
+        ? reportLibrary.filter(item => !analysisSessions.some(session => session.ticker === item.ticker))
+        : reportLibrary;
 
       switch (filter) {
         case 'BOOKMARKED':

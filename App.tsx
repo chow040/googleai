@@ -8,7 +8,7 @@ import AccountSettingsPage from './components/AccountSettingsPage';
 import LandingPage from './components/LandingPage';
 import { generateEquityReport } from './services/geminiService';
 import { EquityReport, LoadingState, SavedReportItem, UserProfile, AnalysisSession } from './types';
-import { Search, Loader2, Sparkles, Eye, TrendingUp, TrendingDown, Minus, Bookmark, X, ArrowRight, Database } from 'lucide-react';
+import { Search, Loader2, Sparkles, Eye, TrendingUp, TrendingDown, Minus, Bookmark, X, ArrowRight, Database, ExternalLink } from 'lucide-react';
 
 const SAMPLE_REPORT: EquityReport = {
   companyName: "AstroMining Corp",
@@ -310,10 +310,12 @@ const ANALYSIS_PHASES = [
 function App() {
   const [ticker, setTicker] = useState('');
   
-  // View State (Replaces LoadingState for layout control)
-  // Added SETTINGS view mode
+  // View State
   const [viewMode, setViewMode] = useState<'LANDING' | 'DASHBOARD' | 'REPORT' | 'SETTINGS'>('LANDING');
   
+  // Demo Modal State
+  const [showDemoModal, setShowDemoModal] = useState(false);
+
   // Current active report to display
   const [report, setReport] = useState<EquityReport | null>(null);
   
@@ -522,10 +524,15 @@ function App() {
     }
   };
 
+  // Modified to open modal instead of changing view mode
   const handleViewSample = () => {
     setReport(SAMPLE_REPORT);
     setTicker("ASTRO");
-    setViewMode('REPORT');
+    setShowDemoModal(true);
+  };
+
+  const handleCloseDemoModal = () => {
+    setShowDemoModal(false);
   };
 
   const handleViewAnalyzedReport = (sessionId: string) => {
@@ -565,6 +572,12 @@ function App() {
 
   // Toggle Bookmark Status (Save/Unsave without deleting)
   const toggleBookmarkReport = (item: SavedReportItem) => {
+    // If we are in demo mode (on landing page), clicking bookmark should prompt login
+    if (showDemoModal && !user) {
+       handleOpenAuth();
+       return;
+    }
+
     setReportLibrary(prev => {
       const existing = prev.find(i => i.ticker === item.ticker);
       if (existing) {
@@ -609,6 +622,7 @@ function App() {
     setUser(newUser);
     // Explicitly set view mode to ensure transition from Landing to Dashboard
     setViewMode('DASHBOARD');
+    setShowDemoModal(false); // Close demo if open
   };
 
   const handleLogout = () => {
@@ -726,6 +740,73 @@ function App() {
             )}
 
           </main>
+        </div>
+      )}
+
+      {/* DEMO REPORT POP-UP MODAL */}
+      {showDemoModal && report && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+           {/* Backdrop */}
+           <div 
+             className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm transition-opacity"
+             onClick={handleCloseDemoModal}
+           ></div>
+
+           {/* Modal Content */}
+           <div className="relative w-full max-w-7xl max-h-[90vh] bg-slate-900 rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col animate-fade-in-up">
+              
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-6 py-4 bg-slate-900 border-b border-white/10 shrink-0">
+                 <div className="flex items-center gap-3">
+                    <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                       <Eye className="w-3.5 h-3.5" /> Preview Mode
+                    </span>
+                    <h3 className="text-white font-bold">Ultramagnus Demo Report</h3>
+                 </div>
+                 <div className="flex items-center gap-4">
+                     {!user && (
+                        <button 
+                           onClick={handleOpenAuth}
+                           className="hidden sm:flex text-xs font-bold text-slate-300 hover:text-white transition-colors"
+                        >
+                           Create Free Account
+                        </button>
+                     )}
+                     <button 
+                        onClick={handleCloseDemoModal}
+                        className="p-2 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all border border-white/5"
+                     >
+                        <X className="w-5 h-5" />
+                     </button>
+                 </div>
+              </div>
+
+              {/* Scrollable Report Body */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950 p-4 md:p-8">
+                 <div className="max-w-6xl mx-auto">
+                    <ReportCard 
+                      report={report} 
+                      isBookmarked={false} // Demo doesn't show bookmarked state
+                      onToggleBookmark={toggleBookmarkReport} // Leads to auth
+                      isTeaserMode={false} // Unlock everything for demo
+                      onUnlock={() => {}} // No-op
+                    />
+                 </div>
+              </div>
+              
+              {/* Footer CTA (Sticky) */}
+              {!user && (
+                 <div className="p-4 bg-gradient-to-r from-indigo-900/90 to-purple-900/90 border-t border-white/10 flex flex-col sm:flex-row items-center justify-center gap-4 text-center shrink-0">
+                    <p className="text-sm text-indigo-100 font-medium">Ready to analyze real stocks with this depth?</p>
+                    <button 
+                       onClick={handleOpenAuth}
+                       className="px-6 py-2 bg-white text-indigo-900 font-bold rounded-lg hover:bg-indigo-50 transition-colors shadow-lg text-sm flex items-center gap-2"
+                    >
+                       Get Started for Free <ArrowRight className="w-4 h-4" />
+                    </button>
+                 </div>
+              )}
+           </div>
         </div>
       )}
 

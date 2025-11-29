@@ -234,16 +234,6 @@ const AccountSettingsPage: React.FC<AccountSettingsPageProps> = ({ user, onUpdat
                           </button>
                        </div>
                     </div>
-                    {/* Usage Bar */}
-                    <div className="bg-slate-900/50 px-8 py-4 border-t border-white/5 backdrop-blur-sm">
-                       <div className="flex justify-between text-xs font-medium text-slate-400 mb-2">
-                          <span>Monthly API Usage</span>
-                          <span className="text-white font-mono">1,420 / 5,000 reqs</span>
-                       </div>
-                       <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden border border-white/5">
-                          <div className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 w-[28%] rounded-full shadow-[0_0_10px_rgba(99,102,241,0.5)]"></div>
-                       </div>
-                    </div>
                  </div>
 
                  {/* Payment Method */}
