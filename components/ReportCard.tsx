@@ -75,6 +75,7 @@ import {
   ReferenceLine
 } from 'recharts';
 import html2canvas from 'html2canvas';
+import { logger } from '../src/lib/logger';
 import { jsPDF } from 'jspdf';
 
 interface ReportCardProps {
@@ -907,7 +908,7 @@ const ReportCard: React.FC<ReportCardProps> = ({ report, isBookmarked, onToggleB
 
       pdf.save(`${report.ticker}_Ultramagnus_Report.pdf`);
     } catch (error) {
-      console.error("PDF Export failed:", error);
+      logger.captureError(error, { meta: { action: 'report.export.pdf', ticker: data.ticker } });
       alert("Failed to generate PDF. Please try again.");
     } finally {
       setIsExporting(false);

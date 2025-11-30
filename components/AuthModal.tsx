@@ -1,6 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { X, Mail, Lock, ArrowRight, Rocket } from 'lucide-react';
+import { AuthModalContext, AuthModalMode, trackAuthModalEvent } from '../services/analytics';
+import { login, signup, startGoogle } from '../services/authClient';
+import { UserProfile } from '../types';
 
 const GoogleIcon = () => (
   <svg className="w-4 h-4" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -14,34 +17,93 @@ const GoogleIcon = () => (
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLogin: (email: string, name: string) => void;
+  onLogin: (profile: UserProfile) => void;
   message?: string; // New prop for custom context messages
+  context?: AuthModalContext;
+  initialMode?: AuthModalMode;
 }
 
-const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, message }) => {
-  const [isLoginMode, setIsLoginMode] = useState(!message);
+const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, message, context = 'unknown', initialMode }) => {
+  const [isLoginMode, setIsLoginMode] = useState(initialMode ? initialMode === 'signin' : !message);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string>('');
+  const [info, setInfo] = useState<string>('');
+  const [isVerificationSent, setIsVerificationSent] = useState(false);
+  const [verificationLink, setVerificationLink] = useState('');
 
-  if (!isOpen) return null;
+  const mode: AuthModalMode = isLoginMode ? 'signin' : 'signup';
+
+  useEffect(() => {
+    if (isOpen) {
+      const derivedMode = initialMode ? initialMode === 'signin' : !message;
+      setIsLoginMode(derivedMode);
+      setError('');
+      setInfo('');
+      setIsVerificationSent(false);
+      setVerificationLink('');
+    }
+  }, [message, isOpen, initialMode]);
+
+  const isFormDisabled = useMemo(() => {
+    return isLoading || !email || !password;
+  }, [isLoading, email, password]);
+
+  const handleAuth = async () => {
+    setError('');
+    setInfo('');
+    setIsLoading(true);
+
+    try {
+      trackAuthModalEvent({ context, action: 'submit', mode, provider: 'email' });
+
+      const displayName = email.split('@')[0];
+      const result = isLoginMode
+        ? await login(email, password)
+        : await signup(email, password, displayName);
+
+      if (result.verificationUrl) {
+        setIsVerificationSent(true);
+        setVerificationLink(result.verificationUrl);
+        trackAuthModalEvent({ context, action: 'success', mode, provider: 'email' });
+        return;
+      }
+
+      if (result.user) {
+        const profile: UserProfile = {
+          id: result.user.id,
+          email: result.user.email,
+          name: result.profile?.display_name || displayName,
+          tier: result.profile?.tier || 'Pro',
+          joinDate: result.profile?.join_date
+            ? new Date(result.profile.join_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+            : ''
+        };
+
+        onLogin(profile);
+        trackAuthModalEvent({ context, action: 'success', mode, provider: 'email' });
+        onClose();
+      }
+    } catch (err: any) {
+      setError(err.message || 'Authentication failed. Please try again.');
+      trackAuthModalEvent({ context, action: 'error', mode, provider: 'email', errorCode: err?.message });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
-
-    setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      // Mock name extraction from email
-      const name = email.split('@')[0].replace(/[0-9]/g, '');
-      const formattedName = name.charAt(0).toUpperCase() + name.slice(1);
-      
-      onLogin(email, formattedName || 'Trader');
-      setIsLoading(false);
-      onClose();
-    }, 1500);
+    handleAuth();
   };
+
+  const handleGoogle = () => {
+    startGoogle();
+  };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -66,88 +128,134 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, message
         </button>
 
         <div className="p-8">
-          <div className="mb-6">
-            <div className="w-12 h-12 bg-indigo-600/20 rounded-xl flex items-center justify-center mb-4 border border-indigo-500/30">
-               <Rocket className="w-6 h-6 text-indigo-400" />
-            </div>
-            <h2 className="text-2xl font-display font-bold text-white">
-              {isLoginMode ? "Welcome Back" : "Create Account"}
-            </h2>
-            <p className="text-slate-400 text-sm mt-1">
-              {isLoginMode 
-                ? "Sign in to access your saved reports and analysis." 
-                : (message || "Create a free account to continue analyzing.")}
-            </p>
-          </div>
+          {isVerificationSent ? (
+            <div className="text-center animate-fade-in">
+              <div className="w-16 h-16 bg-indigo-600/20 rounded-full flex items-center justify-center mx-auto mb-6 border border-indigo-500/30 shadow-lg shadow-indigo-500/10">
+                <Mail className="w-8 h-8 text-indigo-400" />
+              </div>
+              <h2 className="text-2xl font-display font-bold text-white mb-2">Check your inbox</h2>
+              <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+                We've sent a verification link to <span className="text-white font-medium">{email}</span>.<br />
+                Please click the link to activate your account.
+              </p>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1">
-               <label className="text-xs font-bold text-slate-500 uppercase">Email</label>
-               <div className="relative">
-                  <Mail className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
-                  <input 
-                    type="email" 
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-slate-800 border border-white/10 rounded-lg py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-indigo-500/50 transition-colors placeholder-slate-600"
-                    placeholder="trader@example.com"
-                    autoFocus
-                  />
-               </div>
-            </div>
-
-            <div className="space-y-1">
-               <label className="text-xs font-bold text-slate-500 uppercase">Password</label>
-               <div className="relative">
-                  <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
-                  <input 
-                    type="password" 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-slate-800 border border-white/10 rounded-lg py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-indigo-500/50 transition-colors placeholder-slate-600"
-                    placeholder="••••••••"
-                  />
-               </div>
-            </div>
-
-            <button 
-              type="submit"
-              disabled={isLoading || !email || !password}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
-            >
-              {isLoading ? (
-                <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-              ) : (
-                <>
-                  {isLoginMode ? "Sign In" : "Create Free Account"} <ArrowRight className="w-4 h-4" />
-                </>
+              {verificationLink && (
+                <a
+                  href={verificationLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg transition-all shadow-lg shadow-indigo-500/20 mb-4 flex items-center justify-center gap-2"
+                >
+                  Verify Account <ArrowRight className="w-4 h-4" />
+                </a>
               )}
-            </button>
-          </form>
 
-          {isLoginMode && (
-            <div className="mt-6 pt-6 border-t border-white/5">
-               <button 
-                 onClick={() => onLogin('google-user@example.com', 'Google User')}
-                 className="w-full bg-white text-slate-900 font-bold py-2.5 rounded-lg hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 text-sm"
-               >
+              <button
+                onClick={() => {
+                  setIsVerificationSent(false);
+                  setIsLoginMode(true);
+                }}
+                className="text-slate-400 hover:text-white text-sm font-medium transition-colors mt-2"
+              >
+                Back to Sign In
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="mb-6">
+                <div className="w-12 h-12 bg-indigo-600/20 rounded-xl flex items-center justify-center mb-4 border border-indigo-500/30">
+                  <Rocket className="w-6 h-6 text-indigo-400" />
+                </div>
+                <h2 className="text-2xl font-display font-bold text-white">
+                  {isLoginMode ? "Welcome Back" : "Create Account"}
+                </h2>
+                <p className="text-slate-400 text-sm mt-1">
+                  {isLoginMode
+                    ? "Sign in to access your saved reports and analysis."
+                    : (message || "Create a free account to continue analyzing.")}
+                </p>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Email</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full bg-slate-800 border border-white/10 rounded-lg py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-indigo-500/50 transition-colors placeholder-slate-600"
+                      placeholder="trader@example.com"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full bg-slate-800 border border-white/10 rounded-lg py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-indigo-500/50 transition-colors placeholder-slate-600"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2">
+                    {error}
+                  </div>
+                )}
+                {info && (
+                  <div className="text-xs text-amber-200 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2">
+                    {info}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isFormDisabled}
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+                >
+                  {isLoading ? (
+                    <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                  ) : (
+                    <>
+                      {isLoginMode ? "Sign In" : "Create Free Account"} <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              <div className="mt-6 text-center border-t border-white/5 pt-6">
+                <button
+                  type="button"
+                  onClick={handleGoogle}
+                  className="w-full bg-white text-slate-900 font-bold py-2.5 rounded-lg hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 text-sm"
+                >
                   <GoogleIcon /> Sign in with Google
-               </button>
-            </div>
-          )}
+                </button>
+              </div>
 
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => setIsLoginMode(!isLoginMode)}
-              className="text-slate-400 hover:text-white text-sm transition-colors"
-            >
-              {isLoginMode ? (
-                <>New to Moonshot? <span className="text-indigo-400 font-bold">Create an account</span></>
-              ) : (
-                <>Already have an account? <span className="text-indigo-400 font-bold">Sign In</span></>
-              )}
-            </button>
-          </div>
+              <div className="mt-6 text-center">
+                <button
+                  onClick={() => setIsLoginMode(!isLoginMode)}
+                  className="text-slate-400 hover:text-white text-sm transition-colors"
+                >
+                  {isLoginMode ? (
+                    <>New to Moonshot? <span className="text-indigo-400 font-bold">Create an account</span></>
+                  ) : (
+                    <>Already have an account? <span className="text-indigo-400 font-bold">Sign In</span></>
+                  )}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

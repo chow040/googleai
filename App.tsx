@@ -10,6 +10,13 @@ import LandingPage from './components/LandingPage';
 import { generateEquityReport } from './services/geminiService';
 import { EquityReport, LoadingState, SavedReportItem, UserProfile, AnalysisSession } from './types';
 import { Search, Loader2, Sparkles, Eye, TrendingUp, TrendingDown, Minus, Bookmark, X, ArrowRight, Database, ExternalLink } from 'lucide-react';
+import { AuthModalContext, trackAuthModalEvent } from './services/analytics';
+import { fetchMe, logout as apiLogout } from './services/authClient';
+import { verifyEmail } from './services/verify';
+import { checkGuestLimit } from './services/limits';
+import { logger } from './src/lib/logger';
+import { apiJson } from './services/apiClient';
+import { broadcast, subscribe } from './services/sync';
 
 const SAMPLE_REPORT: EquityReport = {
   companyName: "AstroMining Corp",
@@ -308,6 +315,24 @@ const ANALYSIS_PHASES = [
   "Finalizing Moonshot Report..."
 ];
 
+const profileFromResponse = (payload: any): UserProfile | null => {
+  const profile = payload?.profile;
+  if (!profile) return null;
+
+  const tier = (profile.tier as UserProfile['tier']) || 'Pro';
+
+  return {
+    id: payload?.user?.id || profile.id || 'unknown',
+    email: payload?.user?.email || profile.email || '',
+    name: profile.display_name || profile.name || 'Trader',
+    tier,
+    joinDate: profile.join_date
+      ? new Date(profile.join_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+      : '',
+    avatarUrl: profile.avatar_url || undefined
+  };
+};
+
 function App() {
   const [ticker, setTicker] = useState('');
 
@@ -331,9 +356,11 @@ function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMessage, setAuthModalMessage] = useState<string>(''); // Dynamic message for auth modal
+  const [authContext, setAuthContext] = useState<AuthModalContext>('unknown');
+  const [authInitialMode, setAuthInitialMode] = useState<'signin' | 'signup'>('signup');
+  const hasInitRef = useRef(false);
 
   // Guest Usage Tracking
-  const [guestUsageCount, setGuestUsageCount] = useState(0);
 
   // Unified Report Library (Auto-saved history + Bookmarked items)
   const [reportLibrary, setReportLibrary] = useState<SavedReportItem[]>(() => {
@@ -353,17 +380,112 @@ function App() {
     return [];
   });
 
-  // Load User & Usage from LocalStorage
+  // Load User from stored session
   useEffect(() => {
-    const savedUser = localStorage.getItem('ultramagnus_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
+    if (hasInitRef.current) return;
+    hasInitRef.current = true;
 
-    const usage = localStorage.getItem('ultramagnus_guest_usage');
-    if (usage) {
-      setGuestUsageCount(parseInt(usage, 10));
-    }
+    const loadSession = async () => {
+      try {
+        logger.info('auth.session.check.start');
+        const me = await fetchMe();
+        const profile = profileFromResponse(me);
+        if (profile) {
+          setUser(profile);
+          localStorage.setItem('ultramagnus_user', JSON.stringify(profile));
+          logger.info('auth.session.check.success', { meta: { userId: profile.id } });
+        } else {
+          logger.warn('auth.session.profile_missing');
+        }
+      } catch (err) {
+        logger.captureError(err, { meta: { stage: 'auth.session.check' } });
+        const savedUser = localStorage.getItem('ultramagnus_user');
+        if (savedUser) {
+          const parsed: UserProfile = JSON.parse(savedUser);
+          setUser(parsed);
+          logger.info('auth.session.local_fallback', { meta: { userId: parsed.id } });
+        }
+      }
+    };
+
+    const url = new URL(window.location.href);
+    const token = url.searchParams.get('token');
+    const oauthToken = url.searchParams.get('oauth_token');
+    const oauthError = url.searchParams.get('error');
+
+    const clearParams = () => {
+      url.searchParams.delete('token');
+      url.searchParams.delete('oauth_token');
+      url.searchParams.delete('error');
+      window.history.replaceState({}, '', url.toString());
+    };
+
+    const run = async () => {
+      if (oauthError) {
+        logger.warn('auth.oauth.error', { meta: { error: oauthError } });
+        clearParams();
+        return;
+      }
+
+      if (oauthToken) {
+        logger.info('auth.oauth.exchange.start');
+        try {
+          const { data: me, requestId } = await apiJson('/api/auth/google/exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ oauth_token: oauthToken })
+          }, { operation: 'auth.google.exchange' });
+
+          const profile = profileFromResponse(me);
+          if (profile) {
+            setUser(profile);
+            localStorage.setItem('ultramagnus_user', JSON.stringify(profile));
+          }
+          logger.info('auth.oauth.exchange.success', { requestId, meta: { hasProfile: !!profile } });
+        } catch (err) {
+          logger.captureError(err, { meta: { stage: 'auth.google.exchange' } });
+        }
+        clearParams();
+        return;
+      }
+
+      if (token) {
+        logger.info('auth.verify.start');
+        try {
+          const data = await verifyEmail(token);
+          logger.info('auth.verify.success', { meta: { userId: data.user?.id } });
+        } catch (err) {
+          logger.captureError(err, { meta: { action: 'auth.verify' } });
+        }
+        clearParams();
+      }
+
+      await loadSession();
+    };
+
+    run();
+  }, []);
+
+  // Sync auth state across tabs
+  useEffect(() => {
+    const unsubscribe = subscribe((event) => {
+      if (event.type === 'logout') {
+        setUser(null);
+        localStorage.removeItem('ultramagnus_user');
+        setViewMode('LANDING');
+      } else if (event.type === 'login') {
+        fetchMe().then((me) => {
+          const profile = profileFromResponse(me);
+          if (profile) {
+            setUser(profile);
+            localStorage.setItem('ultramagnus_user', JSON.stringify(profile));
+          }
+        }).catch((err) => {
+          logger.captureError(err, { meta: { stage: 'auth.sync.login' } });
+        });
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   // FORCE REDIRECT: If user is logged in but on LANDING page, move to dashboard
@@ -372,6 +494,14 @@ function App() {
       setViewMode('DASHBOARD');
     }
   }, [user, viewMode]);
+
+  useEffect(() => {
+    logger.setUser(user || undefined);
+  }, [user]);
+
+  useEffect(() => {
+    logger.setRoute(viewMode);
+  }, [viewMode]);
 
   useEffect(() => {
     localStorage.setItem('ultramagnus_library_v1', JSON.stringify(reportLibrary));
@@ -435,29 +565,42 @@ function App() {
   const handleSelectSuggestion = (symbol: string) => {
     setTicker(symbol);
     setShowSuggestions(false);
+    logger.info('ui.ticker.suggestion_selected', { meta: { symbol } });
   };
 
   const handleSearch = async (e?: React.FormEvent, searchTicker?: string) => {
     if (e) e.preventDefault();
-    const targetTicker = searchTicker || ticker;
-    if (!targetTicker.trim()) return;
+    const rawTicker = searchTicker ?? ticker;
+    const targetTicker = rawTicker.trim().toUpperCase();
+    if (!targetTicker) {
+      logger.warn('analysis.search.invalid', { meta: { rawTicker } });
+      return;
+    }
 
-    // --- TEASER MODE ---
-    // We allow guests to proceed freely. The ReportCard component will handle masking/locking data
-    // based on user status. We do NOT block the search here anymore.
+    try {
+      const limitResult = await checkGuestLimit();
+      if (!limitResult.ok) {
+        logger.warn('guest.usage.limit_reached', { meta: { limit: 3 } });
+        handleOpenAuth('guest-limit', "You've reached the free preview limit. Create a free account to keep analyzing.", 'signup');
+        return;
+      }
+    } catch (err) {
+      logger.captureError(err, { meta: { action: 'guest.limit.check' } });
+      // On error, allow search to proceed but log
+    }
 
     if (!searchTicker) {
-      setTicker(''); // Clear input for next search
+      setTicker('');
     }
     setShowSuggestions(false);
 
-    // Create unique ID for this session
-    const sessionId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
-
-    // Prevent duplicate active analysis for the same ticker
     if (analysisSessions.some(s => s.ticker === targetTicker && s.status === 'PROCESSING')) {
+      logger.info('analysis.session.skipped', { meta: { ticker: targetTicker, reason: 'duplicate_active' } });
       return;
     }
+
+    const sessionId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+    const startedAt = performance.now();
 
     const newSession: AnalysisSession = {
       id: sessionId,
@@ -468,11 +611,11 @@ function App() {
     };
 
     setAnalysisSessions(prev => [newSession, ...prev]);
+    logger.info('analysis.session.start', { correlationId: sessionId, meta: { ticker: targetTicker } });
 
     try {
       const data = await generateEquityReport(targetTicker);
 
-      // COMPLETE ANALYSIS
       setAnalysisSessions(prev => prev.map(s => {
         if (s.id !== sessionId) return s;
         return {
@@ -484,7 +627,11 @@ function App() {
         };
       }));
 
-      // AUTO-SAVE to Library (as Unbookmarked / Recent)
+      logger.info('analysis.session.success', {
+        correlationId: sessionId,
+        meta: { ticker: data.ticker, durationMs: Math.round(performance.now() - startedAt) }
+      });
+
       const newItem: SavedReportItem = {
         ticker: data.ticker,
         companyName: data.companyName,
@@ -493,25 +640,24 @@ function App() {
         verdict: data.verdict,
         addedAt: Date.now(),
         fullReport: data,
-        isBookmarked: false // Auto-save defaults to history, not bookmark
+        isBookmarked: false
       };
 
       setReportLibrary(prev => {
-        // Remove old version if exists (so we update with fresh data)
         const filtered = prev.filter(i => i.ticker !== newItem.ticker);
         return [newItem, ...filtered];
       });
 
-      // Track usage (legacy counter, kept for potential future use)
-      const customKey = localStorage.getItem('ultramagnus_user_api_key');
-      if (!user && !customKey) {
-        const newCount = guestUsageCount + 1;
-        setGuestUsageCount(newCount);
-        localStorage.setItem('ultramagnus_guest_usage', newCount.toString());
-      }
-
+      logger.info('library.report.saved', { correlationId: sessionId, meta: { ticker: data.ticker } });
     } catch (err: any) {
-      console.error(err);
+      logger.captureError(err, {
+        correlationId: sessionId,
+        meta: {
+          action: 'report.generate',
+          ticker: targetTicker,
+          durationMs: Math.round(performance.now() - startedAt)
+        }
+      });
       setAnalysisSessions(prev => prev.map(s => {
         if (s.id !== sessionId) return s;
         return {
@@ -530,10 +676,12 @@ function App() {
     setReport(SAMPLE_REPORT);
     setTicker("ASTRO");
     setShowDemoModal(true);
+    logger.info('demo.sample.opened');
   };
 
   const handleCloseDemoModal = () => {
     setShowDemoModal(false);
+    logger.info('demo.sample.closed');
   };
 
   const handleViewAnalyzedReport = (sessionId: string) => {
@@ -541,15 +689,20 @@ function App() {
     if (session?.result) {
       setReport(session.result);
       setViewMode('REPORT');
+      logger.info('analysis.session.view', { correlationId: sessionId, meta: { ticker: session.ticker } });
+    } else {
+      logger.warn('analysis.session.view_missing', { correlationId: sessionId, meta: { status: session?.status } });
     }
   };
 
   const handleCancelAnalysis = (sessionId: string) => {
     setAnalysisSessions(prev => prev.filter(s => s.id !== sessionId));
+    logger.info('analysis.session.cancelled', { correlationId: sessionId });
   };
 
   // Smart Navigation (Logo Click)
   const handleHome = () => {
+    logger.info('navigation.home', { meta: { previousView: viewMode, hasUser: !!user } });
     // If viewing a report or settings, go back to Dashboard
     if (viewMode === 'REPORT' || viewMode === 'SETTINGS') {
       setViewMode('DASHBOARD');
@@ -575,21 +728,31 @@ function App() {
   const toggleBookmarkReport = (item: SavedReportItem) => {
     // If we are in demo mode (on landing page), clicking bookmark should prompt login
     if (showDemoModal && !user) {
-      handleOpenAuth();
+      handleOpenAuth('lock');
       return;
     }
 
+    let nextIsBookmarked = true;
     setReportLibrary(prev => {
       const existing = prev.find(i => i.ticker === item.ticker);
       if (existing) {
+        nextIsBookmarked = !existing.isBookmarked;
         // Update existing item's bookmark status
         return prev.map(i => i.ticker === item.ticker
           ? { ...i, isBookmarked: !i.isBookmarked }
           : i
         );
       } else {
+        nextIsBookmarked = true;
         // Edge case: Add new item as bookmarked (if not found in library)
         return [{ ...item, isBookmarked: true }, ...prev];
+      }
+    });
+
+    logger.info('library.bookmark.toggled', {
+      meta: {
+        ticker: item.ticker,
+        isBookmarked: nextIsBookmarked
       }
     });
   };
@@ -598,58 +761,70 @@ function App() {
   const deleteReport = (tickerToRemove: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setReportLibrary(reportLibrary.filter(item => item.ticker !== tickerToRemove));
+    logger.warn('library.report.deleted', { meta: { ticker: tickerToRemove } });
   };
 
   const loadReport = (item: SavedReportItem) => {
     if (item.fullReport) {
       setReport(item.fullReport);
       setViewMode('REPORT');
+      logger.info('library.report.loaded', { meta: { ticker: item.ticker, fromSaved: true } });
     } else {
       // Re-analyze if full report not saved (legacy support)
+      logger.info('library.report.reanalyze', { meta: { ticker: item.ticker } });
       handleSearch(undefined, item.ticker);
     }
   };
 
   // Auth Handlers
-  const handleLogin = (email: string, name: string) => {
-    const newUser: UserProfile = {
-      id: Date.now().toString(),
-      name: name,
-      email: email,
-      tier: 'Pro', // Simulate upgrade on login
-      joinDate: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-    };
-    localStorage.setItem('ultramagnus_user', JSON.stringify(newUser));
-    setUser(newUser);
+  const handleLogin = (profile: UserProfile) => {
+    localStorage.setItem('ultramagnus_user', JSON.stringify(profile));
+    setUser(profile);
     // Explicitly set view mode to ensure transition from Landing to Dashboard
     setViewMode('DASHBOARD');
     setShowDemoModal(false); // Close demo if open
+    logger.info('auth.login.success', { meta: { userId: profile.id } });
+    broadcast({ type: 'login', userId: profile.id });
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      logger.info('auth.logout.start');
+      await apiLogout();
+      logger.info('auth.logout.success');
+    } catch (err) {
+      logger.captureError(err, { meta: { action: 'auth.logout' } });
+    }
     setUser(null);
     localStorage.removeItem('ultramagnus_user');
     // Always return to landing on logout
     setViewMode('LANDING');
+    broadcast({ type: 'logout' });
   };
 
   const handleUpdateUser = (updatedUser: UserProfile) => {
     setUser(updatedUser);
     localStorage.setItem('ultramagnus_user', JSON.stringify(updatedUser));
+    logger.info('account.profile.updated', { meta: { userId: updatedUser.id } });
   };
 
-  const handleOpenAuth = () => {
-    setAuthModalMessage('Unlock full access to Ultramagnus.'); // Reset message
+  const handleOpenAuth = (context: AuthModalContext = 'lock', message = 'Unlock full access to Ultramagnus.', initialMode: 'signin' | 'signup' = 'signup') => {
+    setAuthContext(context);
+    setAuthModalMessage(message);
+    setAuthInitialMode(initialMode);
     setIsAuthModalOpen(true);
-  }
+    trackAuthModalEvent({ context, action: 'open', mode: initialMode });
+    logger.info('auth.modal.opened', { meta: { context, initialMode } });
+  };
 
   // Navigation to Settings Page
   const handleOpenSettings = () => {
     if (user) {
+      logger.info('navigation.settings.open', { meta: { userId: user.id } });
       setViewMode('SETTINGS');
     } else {
-      setAuthModalMessage("Please sign in to configure account settings.");
-      setIsAuthModalOpen(true);
+      logger.warn('navigation.settings.blocked', { meta: { reason: 'unauthenticated' } });
+      handleOpenAuth('settings', 'Please sign in to configure account settings.', 'signin');
     }
   };
 
@@ -685,7 +860,7 @@ function App() {
         <LandingPage
           onStartAnalysis={() => setViewMode('DASHBOARD')}
           onViewDemo={handleViewSample}
-          onLogin={handleOpenAuth}
+          onLogin={() => handleOpenAuth('landing', '', 'signin')}
         />
       ) : viewMode === 'SETTINGS' && user ? (
         <div className="relative z-10">
@@ -701,7 +876,7 @@ function App() {
             onHome={handleHome}
             savedCount={reportLibrary.filter(r => r.isBookmarked).length}
             user={user}
-            onLogin={handleOpenAuth}
+            onLogin={() => handleOpenAuth('header', '', 'signin')}
             onLogout={handleLogout}
             onOpenSettings={handleOpenSettings}
           />
@@ -736,7 +911,7 @@ function App() {
                     isBookmarked={isBookmarked}
                     onToggleBookmark={toggleBookmarkReport}
                     isTeaserMode={isTeaserMode}
-                    onUnlock={handleOpenAuth}
+                    onUnlock={() => handleOpenAuth('lock')}
                   />
                 )}
               </div>
@@ -769,7 +944,7 @@ function App() {
               <div className="flex items-center gap-4">
                 {!user && (
                   <button
-                    onClick={handleOpenAuth}
+                    onClick={() => handleOpenAuth('lock')}
                     className="hidden sm:flex text-xs font-bold text-slate-300 hover:text-white transition-colors"
                   >
                     Create Free Account
@@ -798,14 +973,14 @@ function App() {
             </div>
 
             {/* Footer CTA (Sticky) */}
-            {!user && (
-              <div className="p-4 bg-gradient-to-r from-indigo-900/90 to-purple-900/90 border-t border-white/10 flex flex-col sm:flex-row items-center justify-center gap-4 text-center shrink-0">
-                <p className="text-sm text-indigo-100 font-medium">Ready to analyze real stocks with this depth?</p>
-                <button
-                  onClick={handleOpenAuth}
-                  className="px-6 py-2 bg-white text-indigo-900 font-bold rounded-lg hover:bg-indigo-50 transition-colors shadow-lg text-sm flex items-center gap-2"
-                >
-                  Get Started for Free <ArrowRight className="w-4 h-4" />
+                {!user && (
+                  <div className="p-4 bg-gradient-to-r from-indigo-900/90 to-purple-900/90 border-t border-white/10 flex flex-col sm:flex-row items-center justify-center gap-4 text-center shrink-0">
+                    <p className="text-sm text-indigo-100 font-medium">Ready to analyze real stocks with this depth?</p>
+                    <button
+                      onClick={() => handleOpenAuth('lock')}
+                      className="px-6 py-2 bg-white text-indigo-900 font-bold rounded-lg hover:bg-indigo-50 transition-colors shadow-lg text-sm flex items-center gap-2"
+                    >
+                      Get Started for Free <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             )}
@@ -819,6 +994,8 @@ function App() {
         onClose={() => setIsAuthModalOpen(false)}
         onLogin={handleLogin}
         message={authModalMessage}
+        context={authContext}
+        initialMode={authInitialMode}
       />
 
     </div>
